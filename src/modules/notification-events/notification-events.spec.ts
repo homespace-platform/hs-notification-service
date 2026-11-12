@@ -1,7 +1,8 @@
 import { ConfigService } from '@nestjs/config';
 import { jest } from '@jest/globals';
+import type { Admin } from 'kafkajs';
 import { NotificationService } from '../notification/application/notification.service';
-import { NotificationEventsConsumer } from './notification-events.consumer';
+import { missingNotificationTopics, NotificationEventsConsumer } from './notification-events.consumer';
 import {
   parseNotificationEvent,
   renderNotification,
@@ -15,6 +16,14 @@ const event = {
   data: { listingId: 'listing-1' },
 };
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));
+
+describe('Kafka topic requirement', () => {
+  it('reports either missing topic without creating one', async () => {
+    const admin = { listTopics: jest.fn<Admin['listTopics']>().mockResolvedValue(['events']) };
+    expect(await missingNotificationTopics(admin, ['events', 'dlt'])).toEqual(['dlt']);
+    expect(await missingNotificationTopics(admin, ['other', 'dlt'])).toEqual(['other', 'dlt']);
+  });
+});
 describe('notification event contract', () => {
   it('renders the chat category and conversation metadata', () => {
     const chat = parseNotificationEvent(

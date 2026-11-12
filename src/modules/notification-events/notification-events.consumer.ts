@@ -10,6 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import {
   Kafka,
   logLevel,
+  type Admin,
   type Consumer,
   type Producer,
   type EachMessagePayload,
@@ -20,6 +21,14 @@ import {
   parseNotificationEvent,
   renderNotification,
 } from './notification-event';
+
+export async function missingNotificationTopics(
+  admin: Pick<Admin, 'listTopics'>,
+  topics: [string, string],
+): Promise<string[]> {
+  const available = new Set(await admin.listTopics());
+  return topics.filter((topic) => !available.has(topic));
+}
 
 @Injectable()
 export class NotificationEventsConsumer
@@ -51,7 +60,19 @@ export class NotificationEventsConsumer
       allowAutoTopicCreation: false,
     });
     this.producer = kafka.producer({ allowAutoTopicCreation: false });
+    let missingTopics: string[] = [];
     try {
+      const admin = kafka.admin();
+      await admin.connect();
+      try {
+        missingTopics = await missingNotificationTopics(admin, [
+          this.config.getOrThrow<string>('KAFKA_EVENTS_TOPIC'),
+          this.config.getOrThrow<string>('KAFKA_DLT_TOPIC'),
+        ]);
+      } finally {
+        await admin.disconnect();
+      }
+      if (missingTopics.length) throw new Error('Missing Kafka notification topics');
       await this.producer.connect();
       await this.consumer.connect();
       await this.consumer.subscribe({
@@ -65,7 +86,9 @@ export class NotificationEventsConsumer
       });
     } catch {
       await this.onApplicationShutdown();
-      throw new Error('Kafka notification consumer startup failed');
+      throw new Error(missingTopics.length
+        ? `Kafka notification topics missing: ${missingTopics.join(', ')}`
+        : 'Kafka notification consumer startup failed');
     }
   }
 
