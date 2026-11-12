@@ -34,6 +34,42 @@ const templates = {
     'Lịch hẹn của bạn đã bị hủy.',
     'bookingId',
   ],
+  BOOKING_REJECTED: [
+    'APPOINTMENT',
+    'Yêu cầu đặt lịch bị từ chối',
+    'Chủ nhà đã từ chối yêu cầu đặt lịch xem nhà của bạn.',
+    'bookingId',
+  ],
+  BOOKING_RESCHEDULE_REQUESTED: [
+    'APPOINTMENT',
+    'Yêu cầu đổi lịch xem nhà',
+    'Khách hàng đã gửi yêu cầu thay đổi thời gian xem nhà.',
+    'bookingId',
+  ],
+  BOOKING_RESCHEDULE_APPROVED: [
+    'APPOINTMENT',
+    'Yêu cầu đổi lịch được chấp nhận',
+    'Chủ nhà đã chấp nhận thời gian xem nhà mới của bạn.',
+    'bookingId',
+  ],
+  BOOKING_RESCHEDULE_REJECTED: [
+    'APPOINTMENT',
+    'Yêu cầu đổi lịch bị từ chối',
+    'Chủ nhà đã từ chối yêu cầu đổi lịch. Thời gian hẹn trước đó được giữ nguyên.',
+    'bookingId',
+  ],
+  BOOKING_COMPLETED: [
+    'APPOINTMENT',
+    'Lịch xem nhà đã hoàn tất',
+    'Lịch hẹn xem nhà đã được đánh dấu hoàn tất.',
+    'bookingId',
+  ],
+  BOOKING_EXPIRED: [
+    'APPOINTMENT',
+    'Yêu cầu đặt lịch đã hết hạn',
+    'Yêu cầu đặt lịch xem nhà đã hết hạn trước khi được xác nhận.',
+    'bookingId',
+  ],
   CONTRACT_AWAITING_SIGNATURE: [
     'CONTRACT',
     'Hợp đồng cần ký',
@@ -144,8 +180,11 @@ export function parseNotificationEvent(
         throw new InvalidNotificationEvent();
     } else {
       const idKey = templates[event.eventType][3];
+      const keys = Object.keys(event.data).sort().join(',');
       if (
-        Object.keys(event.data).join(',') !== idKey ||
+        !(keys === idKey || (idKey === 'bookingId' && keys === 'bookingId,recipientSide')) ||
+        (Object.hasOwn(event.data, 'recipientSide') &&
+          event.data.recipientSide !== 'OWNER' && event.data.recipientSide !== 'RENTER') ||
         !identifier(event.data[idKey])
       )
         throw new InvalidNotificationEvent();
@@ -175,12 +214,18 @@ export function renderNotification(
     };
   }
   const [category, title, body, idKey] = templates[event.eventType];
+  const side = idKey === 'bookingId' ? event.data.recipientSide : undefined;
+  const bookingPath = side === 'OWNER'
+    ? '/dashboard/viewing-schedules'
+    : side === 'RENTER' ? '/dashboard/viewing-schedules/my-bookings' : undefined;
   return {
     ...common,
     category: category as NotificationCategory,
     title,
     body,
-    actionPath: '/notifications',
-    metadata: { [idKey]: event.data[idKey] },
+    actionPath: bookingPath
+      ? `${bookingPath}?appointmentId=${encodeURIComponent(event.data.bookingId)}`
+      : '/notifications',
+    metadata: { [idKey]: event.data[idKey], ...(side ? { recipientSide: side } : {}) },
   };
 }

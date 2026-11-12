@@ -81,7 +81,45 @@ async function main() {
     await call(`/devices/${device.installationId}`, 'DELETE', { installationSecret: device.installationSecret });
     await call(`/${id}`, 'DELETE');
     assert.equal((await call('/feed')).result.items.length, 0);
+    const bookingId = randomUUID();
+    const renter = `renter-${suffix}`;
+    const bookingTypes = [
+      'BOOKING_REQUESTED', 'BOOKING_CONFIRMED', 'BOOKING_REJECTED',
+      'BOOKING_RESCHEDULE_REQUESTED', 'BOOKING_RESCHEDULE_APPROVED',
+      'BOOKING_RESCHEDULE_REJECTED', 'BOOKING_CANCELLED',
+      'BOOKING_COMPLETED', 'BOOKING_EXPIRED',
+    ];
+    const bookings = bookingTypes.flatMap(eventType => ['OWNER', 'RENTER'].map(recipientSide => ({
+      version: 1, eventId: randomUUID(), eventType, occurredAt: new Date().toISOString(),
+      recipients: [recipientSide === 'OWNER' ? recipient : renter],
+      data: { bookingId, recipientSide },
+    })));
+    await producer.send({ topic, acks: -1, messages: bookings.flatMap(event => {
+      const message = { key: bookingId, value: JSON.stringify(event) };
+      return [message, message];
+    }) });
+    const bookingDeadline = Date.now() + 30000;
+    let ownerBookings = [], renterBookings = [];
+    while (Date.now() < bookingDeadline) {
+      ownerBookings = (await call('/feed?category=APPOINTMENT&limit=50')).result.items;
+      renterBookings = (await call('/feed?category=APPOINTMENT&limit=50', 'GET', undefined, renter)).result.items;
+      if (ownerBookings.length === bookingTypes.length && renterBookings.length === bookingTypes.length) break;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    for (const [side, rows, path] of [
+      ['OWNER', ownerBookings, '/dashboard/viewing-schedules'],
+      ['RENTER', renterBookings, '/dashboard/viewing-schedules/my-bookings'],
+    ]) {
+      assert.equal(rows.length, bookingTypes.length, `${side}: all booking transitions persisted once`);
+      assert.deepEqual(rows.map(row => row.type).sort(), [...bookingTypes].sort());
+      for (const row of rows) {
+        assert.equal(row.metadata.bookingId, bookingId);
+        assert.equal(row.actionPath, `${path}?appointmentId=${bookingId}`);
+      }
+    }
+    assert.equal((await call('/feed', 'GET', undefined, 'other-user')).result.items.length, 0);
     console.log('PASS real Kafka -> MongoDB -> REST: persistence, dedupe, authorization, read/delete, validation, preferences, device registration');
+    console.log('PASS booking: 9 event types x 2 recipient sides, duplicate replay, detail routes, recipient isolation');
     console.log('Test data retained only in homespace_notification_test; isolated Kafka topics use homespace.notification.test.*');
   } finally {
     await app?.close();

@@ -7,13 +7,17 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | Event types                                                    | Required data                  | Category    |
 | -------------------------------------------------------------- | ------------------------------ | ----------- |
 | LISTING_APPROVED, LISTING_REJECTED                             | listingId                      | LISTING     |
-| BOOKING_REQUESTED, BOOKING_CONFIRMED, BOOKING_CANCELLED        | bookingId                      | APPOINTMENT |
+| BOOKING_REQUESTED, BOOKING_CONFIRMED, BOOKING_CANCELLED, BOOKING_REJECTED | bookingId; optional recipientSide | APPOINTMENT |
+| BOOKING_RESCHEDULE_REQUESTED, BOOKING_RESCHEDULE_APPROVED, BOOKING_RESCHEDULE_REJECTED | bookingId; optional recipientSide | APPOINTMENT |
+| BOOKING_COMPLETED, BOOKING_EXPIRED | bookingId; optional recipientSide | APPOINTMENT |
 | CONTRACT_AWAITING_SIGNATURE, CONTRACT_SIGNED, CONTRACT_EXPIRED | contractId                     | CONTRACT    |
 | PAYMENT_SUCCESSFUL, PAYMENT_FAILED, PAYMENT_OVERDUE            | paymentId                      | PAYMENT     |
 | CHAT_MESSAGE_RECEIVED                                          | conversationId                 | CHAT        |
 | PLATFORM_ANNOUNCEMENT                                          | title (1..200), body (1..2000) | SYSTEM      |
 
-Resource events use fixed templates and `/notifications` as the verified route; resource IDs remain in metadata until product-specific detail routes are confirmed. Announcements accept plain text only (no HTML/control characters), with no producer URLs. All priorities are NORMAL. Private chat text, financial details and rejection reasons are deliberately absent.
+Resource events use fixed templates. Booking `data.recipientSide` accepts only `OWNER` or `RENTER`: OWNER opens `/dashboard/viewing-schedules?appointmentId=<bookingId>`, RENTER opens `/dashboard/viewing-schedules/my-bookings?appointmentId=<bookingId>`. The service constructs these routes; producer URLs and extra data fields are rejected. Legacy booking data containing only `bookingId` remains accepted and opens `/notifications`, as do other resource types. `bookingId` and the optional side remain in metadata. If a system event targets both sides, publish separate envelopes with the correct side and recipients. A cancellation event alone cannot determine which side receives it.
+
+Announcements accept plain text only (no HTML/control characters), with no producer URLs. All priorities are NORMAL, including scheduler booking events. Private chat text, financial details and rejection reasons are deliberately absent. Publish each transition with a new immutable event ID (not the booking ID reused across its lifecycle), use the booking ID as Kafka key, and serialize `occurredAt` with exactly three UTC millisecond digits.
 
 ## Publish and inspect
 

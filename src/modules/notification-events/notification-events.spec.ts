@@ -67,6 +67,60 @@ describe('notification event contract', () => {
     );
   });
 });
+
+describe('booking notification contract', () => {
+  const bookingId = '2f89a556-7a9b-4865-aa9f-924531995bd2';
+  const types = [
+    'BOOKING_REQUESTED', 'BOOKING_CONFIRMED', 'BOOKING_CANCELLED',
+    'BOOKING_REJECTED', 'BOOKING_RESCHEDULE_REQUESTED',
+    'BOOKING_RESCHEDULE_APPROVED', 'BOOKING_RESCHEDULE_REJECTED',
+    'BOOKING_COMPLETED', 'BOOKING_EXPIRED',
+  ];
+
+  it.each(types)('renders %s for both recipient sides and legacy events', (eventType) => {
+    for (const recipientSide of ['OWNER', 'RENTER']) {
+      const parsed = parseNotificationEvent(encode({
+        ...event, eventType, data: { recipientSide, bookingId },
+      }));
+      const notification = renderNotification(parsed, 'alice');
+      const path = recipientSide === 'OWNER'
+        ? '/dashboard/viewing-schedules'
+        : '/dashboard/viewing-schedules/my-bookings';
+      expect(notification).toMatchObject({
+        recipientId: 'alice', sourceEventId: event.eventId, type: eventType,
+        category: 'APPOINTMENT', priority: 'NORMAL',
+        actionPath: `${path}?appointmentId=${bookingId}`,
+        metadata: { bookingId, recipientSide },
+      });
+      expect(notification.title).toBeTruthy();
+      expect(notification.body).toBeTruthy();
+    }
+    const legacy = parseNotificationEvent(encode({ ...event, eventType, data: { bookingId } }));
+    expect(renderNotification(legacy, 'alice')).toMatchObject({
+      actionPath: '/notifications', metadata: { bookingId },
+    });
+  });
+
+  it.each([
+    { bookingId, recipientSide: 'ADMIN' },
+    { bookingId, recipientSide: '' },
+    { bookingId, recipientSide: null },
+    { bookingId, recipientSide: ['OWNER'] },
+    { bookingId, recipientSide: 'OWNER', actionPath: 'https://evil.example' },
+    { bookingId: '../secret', recipientSide: 'OWNER' },
+    { recipientSide: 'OWNER' },
+  ])('rejects invalid booking data %j', (data) => {
+    expect(() => parseNotificationEvent(encode({ ...event, eventType: 'BOOKING_CANCELLED', data })))
+      .toThrow('Invalid notification event');
+  });
+
+  it('does not extend non-booking resource contracts with recipientSide', () => {
+    expect(() => parseNotificationEvent(encode({
+      ...event, data: { listingId: 'listing-1', recipientSide: 'OWNER' },
+    }))).toThrow('Invalid notification event');
+  });
+});
+
 describe('Kafka delivery', () => {
   const setup = () => {
     const create = jest
