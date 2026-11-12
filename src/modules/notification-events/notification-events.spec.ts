@@ -101,6 +101,35 @@ describe('booking notification contract', () => {
     });
   });
 
+  it.each(types)('adds listing and schedule context to %s', (eventType) => {
+    const parsed = parseNotificationEvent(encode({
+      ...event, eventType,
+      data: {
+        bookingId, recipientSide: 'OWNER', listingTitle: 'Căn hộ Quận 1',
+        appointmentDate: '2026-11-15', startTime: '09:30',
+      },
+    }));
+    expect(renderNotification(parsed, 'alice')).toMatchObject({
+      category: 'APPOINTMENT',
+      actionPath: `/dashboard/viewing-schedules?appointmentId=${bookingId}`,
+      metadata: { bookingId, recipientSide: 'OWNER' },
+    });
+    expect(renderNotification(parsed, 'alice').body).toContain('Tin: Căn hộ Quận 1. Lịch: 15/11/2026 lúc 09:30.');
+  });
+
+  it.each([
+    { listingTitle: '' }, { listingTitle: '<script>' },
+    { listingTitle: 'x'.repeat(121) }, { listingTitle: 'x\nunsafe' },
+    { appointmentDate: '2026-02-30' }, { appointmentDate: '15/11/2026' },
+    { startTime: '24:00' }, { startTime: '09:60' },
+    { extra: 'x' },
+  ])('rejects invalid booking context %j', (bad) => {
+    expect(() => parseNotificationEvent(encode({
+      ...event, eventType: 'BOOKING_REQUESTED',
+      data: { bookingId, recipientSide: 'OWNER', ...bad },
+    }))).toThrow('Invalid notification event');
+  });
+
   it.each([
     { bookingId, recipientSide: 'ADMIN' },
     { bookingId, recipientSide: '' },

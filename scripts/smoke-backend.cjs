@@ -92,7 +92,7 @@ async function main() {
     const bookings = bookingTypes.flatMap(eventType => ['OWNER', 'RENTER'].map(recipientSide => ({
       version: 1, eventId: randomUUID(), eventType, occurredAt: new Date().toISOString(),
       recipients: [recipientSide === 'OWNER' ? recipient : renter],
-      data: { bookingId, recipientSide },
+      data: { bookingId, recipientSide, listingTitle: 'Can ho thu nghiem', appointmentDate: '2026-11-16', startTime: '08:00' },
     })));
     await producer.send({ topic, acks: -1, messages: bookings.flatMap(event => {
       const message = { key: bookingId, value: JSON.stringify(event) };
@@ -115,6 +115,8 @@ async function main() {
       for (const row of rows) {
         assert.equal(row.metadata.bookingId, bookingId);
         assert.equal(row.actionPath, `${path}?appointmentId=${bookingId}`);
+        assert.match(row.body, /Can ho thu nghiem/);
+        assert.match(row.body, /16\/11\/2026 lúc 08:00/);
       }
     }
     assert.equal((await call('/feed', 'GET', undefined, 'other-user')).result.items.length, 0);

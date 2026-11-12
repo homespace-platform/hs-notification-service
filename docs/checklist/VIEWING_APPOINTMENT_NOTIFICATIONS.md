@@ -205,3 +205,16 @@ Không cần dùng form admin broadcast để tạo thông báo booking. Booking
 - Realtime vẫn dùng room local một instance; cần shared adapter trước khi scale nhiều replica.
 - Generic push không mang category nên recovery có thể refresh lịch khi push thuộc tính năng khác; các tín hiệu được coalesce và không tạo vòng lặp unread-count.
 - Schema/event mới cần notification service phiên bản mới trước khi Core bắt đầu phát; consumer cũ sẽ đưa event mới vào DLT.
+
+## 10. Bổ sung phân loại và ngữ cảnh yêu cầu (13/11/2026)
+
+Ảnh kiểm tra thực tế cho thấy badge chỉ ghi chung “Lịch hẹn” và body không có tên tin/ngày giờ. Rà lại Core xác nhận **không thiếu loại transition**: đủ 9 loại trong mục 3, gồm auto-cancel và scheduler. Feed notification thuộc tài khoản Keycloak, không lọc theo dashboard tenant/owner; cùng tài khoản giữ hai vai trò có thể thấy yêu cầu gửi đến chủ nhà khi đang ở dashboard người thuê. Mỗi thông báo mang `recipientSide` và đường dẫn theo đúng phía nhận.
+
+- [x] Core writer gửi thêm snapshot `listingTitle` đã lọc ký tự điều khiển/HTML, tối đa 120 ký tự; `appointmentDate` ISO và `startTime` HH:mm. Yêu cầu đổi lịch dùng ngày/giờ **đề xuất**; event khác dùng lịch hiện tại. Không gửi phone/email/note/reason.
+- [x] Notification parser chỉ cho phép các field mới ở booking, validate title/ngày/giờ; event booking cũ vẫn nhận. Body mới ghi tên tin và giờ hẹn khi có đủ dữ liệu; push nền vẫn hiển thị nội dung chung.
+- [x] Web hiển thị nhãn theo `item.type` cho cả dropdown và trang đầy đủ, cùng nhãn phía nhận khi có `recipientSide`. Test nhãn 2/2, TypeScript và ESLint đạt.
+- [x] Core writer test 2/2 đạt; fixture JSON thật do Java sinh được notification parser/render chấp nhận với tên tin, giờ và route.
+- [x] Notification focused suite 51/51, build và lint đạt. Smoke Kafka → MongoDB → REST với 9 loại × 2 phía, gửi lặp và ngữ cảnh mới đạt.
+- [ ] Kiểm tra trực tiếp UI sau restart Core + notification service và tạo lịch mới. Notification đã lưu trước đó giữ body cũ; frontend phân loại bằng `type` đã lưu.
+
+Các event ngữ cảnh mới cần notification service mới chạy trước khi Core mới phát; parser cũ sẽ đưa payload nhiều field vào DLT.

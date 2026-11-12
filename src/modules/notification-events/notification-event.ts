@@ -139,6 +139,13 @@ const plainText = (value: unknown, max: number): value is string =>
   value.length <= max &&
   // eslint-disable-next-line no-control-regex -- Reject control characters at the event boundary.
   !/[<>\u0000-\u001f\u007f]/.test(value);
+const bookingDate = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+  !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) &&
+  new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
+const bookingTime = (value: unknown): value is string =>
+  typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 
 export function parseNotificationEvent(
   value: Buffer | null,
@@ -180,12 +187,18 @@ export function parseNotificationEvent(
         throw new InvalidNotificationEvent();
     } else {
       const idKey = templates[event.eventType][3];
-      const keys = Object.keys(event.data).sort().join(',');
+      const keys = Object.keys(event.data);
+      const booking = idKey === 'bookingId';
       if (
-        !(keys === idKey || (idKey === 'bookingId' && keys === 'bookingId,recipientSide')) ||
-        (Object.hasOwn(event.data, 'recipientSide') &&
-          event.data.recipientSide !== 'OWNER' && event.data.recipientSide !== 'RENTER') ||
-        !identifier(event.data[idKey])
+        !identifier(event.data[idKey]) ||
+        (booking
+          ? keys.some((key) => !['bookingId', 'recipientSide', 'listingTitle', 'appointmentDate', 'startTime'].includes(key)) ||
+            (Object.hasOwn(event.data, 'recipientSide') &&
+              event.data.recipientSide !== 'OWNER' && event.data.recipientSide !== 'RENTER') ||
+            (Object.hasOwn(event.data, 'listingTitle') && !plainText(event.data.listingTitle, 120)) ||
+            (Object.hasOwn(event.data, 'appointmentDate') && !bookingDate(event.data.appointmentDate)) ||
+            (Object.hasOwn(event.data, 'startTime') && !bookingTime(event.data.startTime))
+          : keys.length !== 1)
       )
         throw new InvalidNotificationEvent();
     }
@@ -218,11 +231,19 @@ export function renderNotification(
   const bookingPath = side === 'OWNER'
     ? '/dashboard/viewing-schedules'
     : side === 'RENTER' ? '/dashboard/viewing-schedules/my-bookings' : undefined;
+  const detail = idKey === 'bookingId'
+    ? [
+        event.data.listingTitle ? `Tin: ${event.data.listingTitle.trim()}.` : '',
+        event.data.appointmentDate && event.data.startTime
+          ? `Lịch: ${event.data.appointmentDate.slice(8, 10)}/${event.data.appointmentDate.slice(5, 7)}/${event.data.appointmentDate.slice(0, 4)} lúc ${event.data.startTime}.`
+          : '',
+      ].filter(Boolean).join(' ')
+    : '';
   return {
     ...common,
     category: category as NotificationCategory,
     title,
-    body,
+    body: detail ? `${body} ${detail}` : body,
     actionPath: bookingPath
       ? `${bookingPath}?appointmentId=${encodeURIComponent(event.data.bookingId)}`
       : '/notifications',
