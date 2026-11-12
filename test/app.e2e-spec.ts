@@ -1,10 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AuthenticationController } from '../src/modules/authentication/presentation/authentication.controller';
 import { GatewayAuthenticationGuard } from '../src/modules/authentication/presentation/guards/gateway-authentication.guard';
 import { HealthController } from '../src/modules/health/presentation/health.controller';
+
+const SECRET = 'test-only-internal-gateway-secret-32';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -12,7 +15,10 @@ describe('AppController (e2e)', () => {
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       controllers: [HealthController, AuthenticationController],
-      providers: [GatewayAuthenticationGuard],
+      providers: [
+        GatewayAuthenticationGuard,
+        { provide: ConfigService, useValue: { getOrThrow: () => SECRET } },
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -27,9 +33,17 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer()).get('/auth/me').expect(401);
   });
 
+  it('/auth/me (GET) rejects a spoofed X-User-Id without the gateway secret', () => {
+    return request(app.getHttpServer())
+      .get('/auth/me')
+      .set('X-User-Id', 'user-123')
+      .expect(401);
+  });
+
   it('/auth/me (GET) returns gateway identity', () => {
     return request(app.getHttpServer())
       .get('/auth/me')
+      .set('X-Internal-Secret', SECRET)
       .set('X-User-Id', 'user-123')
       .set('X-User-Email', 'user@homespace.vn')
       .set('X-User-Name', 'Home Space User')
@@ -51,6 +65,7 @@ describe('AppController (e2e)', () => {
   it('/auth/me (GET) decodes a UTF-8 display name from the gateway', () => {
     return request(app.getHttpServer())
       .get('/auth/me')
+      .set('X-Internal-Secret', SECRET)
       .set('X-User-Id', 'user-123')
       .set('X-User-Name-B64', Buffer.from('Tuấn Đào', 'utf8').toString('base64'))
       .expect(200)

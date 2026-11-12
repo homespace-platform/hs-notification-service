@@ -1,0 +1,8 @@
+{
+  "eventId": "test-listing-approved-001",
+  "eventType": "LISTING_APPROVED",
+  "version": 1,
+  "occurredAt": "2026-11-12T00:00:00.000Z",
+  "recipients": ["replace-with-keycloak-user-id"],
+  "data": { "listingId": "test-listing-001" }
+}

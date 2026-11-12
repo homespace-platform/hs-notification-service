@@ -1,0 +1,11 @@
+{
+  "eventId": "test-announcement-001",
+  "eventType": "PLATFORM_ANNOUNCEMENT",
+  "version": 1,
+  "occurredAt": "2026-11-12T00:00:00.000Z",
+  "recipients": ["replace-with-keycloak-user-id"],
+  "data": {
+    "title": "Scheduled maintenance",
+    "body": "HomeSpace will undergo scheduled maintenance tonight."
+  }
+}

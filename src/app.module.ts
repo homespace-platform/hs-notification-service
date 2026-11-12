@@ -6,6 +6,7 @@ import { EurekaModule } from './infrastructure/discovery/eureka.module';
 import { AuthenticationModule } from './modules/authentication/authentication.module';
 import { HealthModule } from './modules/health/health.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { NotificationEventsModule } from './modules/notification-events/notification-events.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { NotificationModule } from './modules/notification/notification.module';
     HealthModule,
     AuthenticationModule,
     NotificationModule,
+    NotificationEventsModule,
   ],
 })
 export class AppModule {}

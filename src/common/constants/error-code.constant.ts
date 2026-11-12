@@ -19,6 +19,21 @@ export const ErrorCode = {
     message: 'Route not found',
     statusCode: 404,
   },
+  NOTIFICATION_NOT_FOUND: {
+    code: 4101,
+    message: 'Notification not found',
+    statusCode: 404,
+  },
+  INVALID_CURSOR: {
+    code: 4102,
+    message: 'Invalid cursor',
+    statusCode: 400,
+  },
+  INVALID_PREFERENCES: {
+    code: 4103,
+    message: 'Invalid notification preferences',
+    statusCode: 400,
+  },
 } as const;
 
 export type ErrorDefinition = (typeof ErrorCode)[keyof typeof ErrorCode];
