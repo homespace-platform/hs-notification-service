@@ -3,7 +3,37 @@ import type {
   NotificationCategory,
 } from '../notification/domain/notification.model';
 
+// Neutral copy: every type can reach either side; producer sends no reason/date/amount.
+const rental = (title: string, body: string) =>
+  ['RENTAL_REQUEST', title, body, 'requestId'] as const;
+
 const templates = {
+  RENTAL_REQUEST_SUBMITTED: rental('Yêu cầu thuê đã được gửi', 'Một yêu cầu thuê đã được gửi.'),
+  RENTAL_REQUEST_ACCEPTED: rental('Yêu cầu thuê đã được chấp nhận', 'Yêu cầu thuê đã được chấp nhận. Vui lòng mở yêu cầu để xem bước tiếp theo.'),
+  RENTAL_REQUEST_REJECTED: rental('Yêu cầu thuê bị từ chối', 'Yêu cầu thuê đã bị từ chối.'),
+  RENTAL_REQUEST_AUTO_REJECTED: rental('Yêu cầu thuê không được chọn', 'Yêu cầu thuê đã bị từ chối tự động vì một yêu cầu thuê khác đã được chọn.'),
+  RENTAL_REQUEST_CANCELLED: rental('Yêu cầu thuê đã bị hủy', 'Yêu cầu thuê đã bị hủy.'),
+  RENTAL_REQUEST_EXPIRED: rental('Yêu cầu thuê hết hạn phản hồi', 'Yêu cầu thuê đã hết hạn vì không được phản hồi kịp thời.'),
+  RENTAL_HOLD_EXPIRED: rental('Thời gian giữ chỗ đã hết', 'Thời gian giữ chỗ cho yêu cầu thuê đã hết hạn.'),
+  RENTAL_CANCELLATION_REQUESTED: rental('Có yêu cầu hủy thuê', 'Một yêu cầu hủy thuê đã được gửi. Vui lòng mở yêu cầu để xem chi tiết.'),
+  RENTAL_CANCELLATION_REFUND_PENDING: rental('Hủy thuê đang chờ hoàn tiền', 'Yêu cầu hủy thuê đang chờ xử lý hoàn tiền. Việc hủy thuê và hoàn tiền chưa hoàn tất.'),
+  RENTAL_CANCELLATION_REJECTED: rental('Yêu cầu hủy thuê bị từ chối', 'Yêu cầu hủy thuê đã bị từ chối.'),
+  RENTAL_CANCELLATION_WITHDRAWN: rental('Yêu cầu hủy thuê đã được rút lại', 'Yêu cầu hủy thuê đã được rút lại.'),
+  RENTAL_CANCELLATION_DISPUTED: rental('Yêu cầu hủy thuê bị phản đối', 'Yêu cầu hủy thuê đã bị phản đối. Đây chưa phải kết quả giải quyết khiếu nại.'),
+  RENTAL_START_CHANGE_REQUESTED: rental('Có yêu cầu đổi ngày bắt đầu thuê', 'Một yêu cầu đổi ngày bắt đầu thuê đã được gửi. Vui lòng mở yêu cầu để xem chi tiết.'),
+  RENTAL_START_CHANGE_APPROVED: rental('Đổi ngày bắt đầu thuê được chấp nhận', 'Yêu cầu đổi ngày bắt đầu thuê đã được chấp nhận.'),
+  RENTAL_START_CHANGE_REJECTED: rental('Đổi ngày bắt đầu thuê bị từ chối', 'Yêu cầu đổi ngày bắt đầu thuê đã bị từ chối.'),
+  RENTAL_START_CHANGE_WITHDRAWN: rental('Yêu cầu đổi ngày bắt đầu thuê đã được rút lại', 'Yêu cầu đổi ngày bắt đầu thuê đã được rút lại.'),
+  RENTAL_START_CHANGE_EXPIRED: rental('Yêu cầu đổi ngày bắt đầu thuê đã hết hạn', 'Yêu cầu đổi ngày bắt đầu thuê đã hết hạn.'),
+  RENTAL_SIGNING_WINDOW_REOPENED: rental('Thời gian ký hợp đồng được mở lại', 'Thời gian ký hợp đồng đã được mở lại. Hợp đồng chưa được ký.'),
+  RENTAL_HOLD_EXTENDED: rental('Thời gian giữ chỗ được gia hạn', 'Thời gian giữ chỗ cho yêu cầu thuê đã được gia hạn.'),
+  RENTAL_DEFAULT_NOTICE_ISSUED: rental('Có thông báo về yêu cầu thuê', 'Một thông báo liên quan đến yêu cầu thuê đã được phát hành. Vui lòng mở yêu cầu để xem hạn xử lý hiện tại.'),
+  RENTAL_DEFAULT_DISPUTED: rental('Thông báo về yêu cầu thuê bị phản đối', 'Thông báo liên quan đến yêu cầu thuê đã bị phản đối. Vui lòng mở yêu cầu để xem hạn xử lý hiện tại.'),
+  RENTAL_REQUEST_CANCELLED_BY_SYSTEM: rental('Yêu cầu thuê bị hủy bởi hệ thống', 'Yêu cầu thuê đã bị hệ thống hủy.'),
+  RENTAL_RESUME_REQUESTED: rental('Có yêu cầu tiếp tục thuê', 'Một yêu cầu tiếp tục yêu cầu thuê đã được gửi. Vui lòng mở yêu cầu để xem chi tiết.'),
+  RENTAL_RESUMED: rental('Yêu cầu thuê đã được tiếp tục', 'Yêu cầu thuê đã được tiếp tục. Hợp đồng chưa được ký.'),
+  RENTAL_RESUME_REJECTED: rental('Yêu cầu tiếp tục thuê bị từ chối', 'Yêu cầu tiếp tục yêu cầu thuê đã bị từ chối.'),
+  RENTAL_RESUME_WITHDRAWN: rental('Yêu cầu tiếp tục thuê đã được rút lại', 'Yêu cầu tiếp tục yêu cầu thuê đã được rút lại.'),
   LISTING_APPROVED: [
     'LISTING',
     'Tin đăng đã được duyệt',
@@ -268,6 +298,10 @@ export function parseNotificationEvent(
             (Object.hasOwn(event.data, 'listingTitle') && !plainText(event.data.listingTitle, 120)) ||
             (Object.hasOwn(event.data, 'appointmentDate') && !bookingDate(event.data.appointmentDate)) ||
             (Object.hasOwn(event.data, 'startTime') && !bookingTime(event.data.startTime))
+          : idKey === 'requestId'
+          ? keys.some((key) => !['requestId', 'recipientSide', 'listingTitle'].includes(key)) ||
+            (event.data.recipientSide !== 'OWNER' && event.data.recipientSide !== 'RENTER') ||
+            (Object.hasOwn(event.data, 'listingTitle') && !plainText(event.data.listingTitle, 120))
           : keys.length !== 1)
       )
         throw new InvalidNotificationEvent();
@@ -302,10 +336,12 @@ export function renderNotification(
     : undefined;
   const title: string = statusCopy?.[0] ?? baseTitle;
   const body: string = statusCopy?.[1] ?? baseBody;
-  const side = idKey === 'bookingId' ? event.data.recipientSide : undefined;
-  const bookingPath = side === 'OWNER'
-    ? '/dashboard/viewing-schedules'
-    : side === 'RENTER' ? '/dashboard/viewing-schedules/my-bookings' : undefined;
+  const side = idKey === 'bookingId' || idKey === 'requestId' ? event.data.recipientSide : undefined;
+  const bookingPath = idKey === 'requestId'
+    ? side === 'OWNER' ? '/dashboard/rental-requests' : '/dashboard/rental-requests/my-requests'
+    : side === 'OWNER'
+      ? '/dashboard/viewing-schedules'
+      : side === 'RENTER' ? '/dashboard/viewing-schedules/my-bookings' : undefined;
   const detail = idKey === 'bookingId'
     ? [
         event.data.listingTitle ? `Tin: ${event.data.listingTitle.trim()}.` : '',
@@ -313,7 +349,7 @@ export function renderNotification(
           ? `Lịch: ${event.data.appointmentDate.slice(8, 10)}/${event.data.appointmentDate.slice(5, 7)}/${event.data.appointmentDate.slice(0, 4)} lúc ${event.data.startTime}.`
           : '',
       ].filter(Boolean).join(' ')
-    : idKey === 'listingId' && event.data.listingTitle
+    : (idKey === 'listingId' || idKey === 'requestId') && event.data.listingTitle
       ? `Tin: ${event.data.listingTitle.trim()}.`
       : '';
   return {
@@ -324,7 +360,9 @@ export function renderNotification(
     actionPath: idKey === 'listingId'
       ? `/dashboard/properties/view?id=${encodeURIComponent(event.data.listingId)}`
       : bookingPath
-        ? `${bookingPath}?appointmentId=${encodeURIComponent(event.data.bookingId)}`
+        ? idKey === 'requestId'
+          ? `${bookingPath}?requestId=${encodeURIComponent(event.data.requestId)}`
+          : `${bookingPath}?appointmentId=${encodeURIComponent(event.data.bookingId)}`
         : '/notifications',
     metadata: {
       [idKey]: event.data[idKey],

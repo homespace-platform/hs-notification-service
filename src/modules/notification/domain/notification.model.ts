@@ -6,6 +6,7 @@ export const NOTIFICATION_CATEGORIES = [
   'CONTRACT',
   'PAYMENT',
   'CHAT',
+  'RENTAL_REQUEST',
 ] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
