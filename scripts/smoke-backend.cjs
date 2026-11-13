@@ -81,6 +81,48 @@ async function main() {
     await call(`/devices/${device.installationId}`, 'DELETE', { installationSecret: device.installationSecret });
     await call(`/${id}`, 'DELETE');
     assert.equal((await call('/feed')).result.items.length, 0);
+    const listingId = randomUUID();
+    const listingCases = [
+      ['LISTING_CREATED', {}], ['LISTING_UPDATED', {}],
+      ['LISTING_APPROVED', {}], ['LISTING_REJECTED', {}],
+      ['LISTING_EDIT_APPROVED', { editId: randomUUID() }],
+      ['LISTING_EDIT_REJECTED', { editId: randomUUID() }],
+      ['LISTING_EXPIRED', {}],
+      ...['PENDING_REVIEW', 'HIDDEN', 'VIOLATION', 'RENTED_EXTERNALLY']
+        .map(status => ['LISTING_STATUS_CHANGED', { status }]),
+    ];
+    const listingEvents = listingCases.map(([eventType, extra]) => ({
+      version: 1, eventId: randomUUID(), eventType, occurredAt: new Date().toISOString(),
+      recipients: [recipient], data: { listingId, ...extra,
+        ...(['LISTING_APPROVED', 'LISTING_REJECTED'].includes(eventType) ? {} : { listingTitle: 'Tin thu nghiem' }) },
+    }));
+    await producer.send({ topic, acks: -1, messages: listingEvents.flatMap(event => {
+      const message = { key: listingId, value: JSON.stringify(event) };
+      return [message, message];
+    }) });
+    let listingRows = [];
+    const listingDeadline = Date.now() + 30000;
+    while (Date.now() < listingDeadline) {
+      listingRows = (await call('/feed?category=LISTING&limit=50')).result.items;
+      if (listingRows.length === listingCases.length) break;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    assert.equal(listingRows.length, listingCases.length, 'all 11 listing decision/status cases persisted once');
+    assert.equal(new Set(listingRows.map(row => row.id)).size, listingCases.length);
+    for (const [eventType, extra] of listingCases) {
+      const matches = listingRows.filter(row => row.type === eventType && row.metadata.status === extra.status);
+      assert.equal(matches.length, 1, `${eventType} ${extra.status || ''}: exactly one notification`);
+      const row = matches[0];
+      assert.deepEqual(row.metadata, { listingId, ...extra });
+      assert.equal(row.actionPath, `/dashboard/properties/view?id=${listingId}`);
+      assert.equal(row.category, 'LISTING');
+      assert.equal(row.priority, 'NORMAL');
+      assert.equal(row.readAt, null);
+      assert.equal(Object.hasOwn(row, 'recipientId'), false);
+      assert.equal(Object.hasOwn(row, 'sourceEventId'), false);
+      if (!['LISTING_APPROVED', 'LISTING_REJECTED'].includes(eventType)) assert.match(row.body, /Tin thu nghiem/);
+    }
+    assert.equal((await call('/unread-count')).result.count, listingCases.length);
     const bookingId = randomUUID();
     const renter = `renter-${suffix}`;
     const bookingTypes = [
@@ -122,6 +164,7 @@ async function main() {
     assert.equal((await call('/feed', 'GET', undefined, 'other-user')).result.items.length, 0);
     console.log('PASS real Kafka -> MongoDB -> REST: persistence, dedupe, authorization, read/delete, validation, preferences, device registration');
     console.log('PASS booking: 9 event types x 2 recipient sides, duplicate replay, detail routes, recipient isolation');
+    console.log('PASS listing: 8 event types, all 4 status values, legacy id-only events, duplicate replay, minimal metadata and owner routes');
     console.log('Test data retained only in homespace_notification_test; isolated Kafka topics use homespace.notification.test.*');
   } finally {
     await app?.close();

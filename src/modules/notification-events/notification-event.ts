@@ -16,6 +16,42 @@ const templates = {
     'Tin đăng của bạn cần được chỉnh sửa.',
     'listingId',
   ],
+  LISTING_CREATED: [
+    'LISTING',
+    'Tin đăng đã được tạo',
+    'Một tin đăng mới đã được tạo cho bạn.',
+    'listingId',
+  ],
+  LISTING_UPDATED: [
+    'LISTING',
+    'Tin đăng đã được cập nhật',
+    'Nội dung tin đăng của bạn đã được cập nhật.',
+    'listingId',
+  ],
+  LISTING_EDIT_APPROVED: [
+    'LISTING',
+    'Chỉnh sửa tin đăng đã được duyệt',
+    'Yêu cầu chỉnh sửa tin đăng của bạn đã được duyệt.',
+    'listingId',
+  ],
+  LISTING_EDIT_REJECTED: [
+    'LISTING',
+    'Chỉnh sửa tin đăng chưa được duyệt',
+    'Yêu cầu chỉnh sửa tin đăng của bạn chưa được duyệt. Vui lòng mở tin đăng để xem chi tiết.',
+    'listingId',
+  ],
+  LISTING_STATUS_CHANGED: [
+    'LISTING',
+    'Trạng thái tin đăng đã thay đổi',
+    'Trạng thái tin đăng của bạn đã thay đổi.',
+    'listingId',
+  ],
+  LISTING_EXPIRED: [
+    'LISTING',
+    'Thời hạn đăng tin đã kết thúc',
+    'Thời hạn đăng tin của bạn đã kết thúc, kể cả khi tin đang có chỉnh sửa chờ duyệt.',
+    'listingId',
+  ],
   BOOKING_REQUESTED: [
     'APPOINTMENT',
     'Yêu cầu đặt lịch mới',
@@ -114,6 +150,33 @@ const templates = {
   ],
 } as const;
 
+// Fixed, status-specific copy; the producer only sends the status code.
+const listingStatusCopy = {
+  PENDING_REVIEW: [
+    'Tin đăng đang chờ xét duyệt',
+    'Tin đăng của bạn đã được chuyển sang trạng thái chờ xét duyệt.',
+  ],
+  HIDDEN: [
+    'Tin đăng đã bị ẩn',
+    'Tin đăng của bạn đã được ẩn khỏi danh sách công khai.',
+  ],
+  VIOLATION: [
+    'Tin đăng bị đánh dấu vi phạm',
+    'Tin đăng của bạn đã bị đánh dấu vi phạm quy định. Vui lòng mở tin đăng để xem chi tiết.',
+  ],
+  RENTED_EXTERNALLY: [
+    'Tin đăng đã được ghi nhận đã cho thuê',
+    'Tin đăng của bạn đã được ghi nhận là đã cho thuê ngoài nền tảng.',
+  ],
+} as const;
+
+// Extra required listing data key per event type (besides listingId).
+const listingExtraKey: Record<string, 'editId' | 'status' | undefined> = {
+  LISTING_EDIT_APPROVED: 'editId',
+  LISTING_EDIT_REJECTED: 'editId',
+  LISTING_STATUS_CHANGED: 'status',
+};
+
 export interface NotificationEvent {
   eventId: string;
   eventType: keyof typeof templates | 'PLATFORM_ANNOUNCEMENT';
@@ -189,9 +252,16 @@ export function parseNotificationEvent(
       const idKey = templates[event.eventType][3];
       const keys = Object.keys(event.data);
       const booking = idKey === 'bookingId';
+      const listing = idKey === 'listingId';
+      const extra = listingExtraKey[event.eventType];
       if (
         !identifier(event.data[idKey]) ||
-        (booking
+        (listing
+          ? keys.some((key) => key !== 'listingId' && key !== 'listingTitle' && key !== extra) ||
+            (Object.hasOwn(event.data, 'listingTitle') && !plainText(event.data.listingTitle, 120)) ||
+            (extra === 'editId' && !identifier(event.data.editId)) ||
+            (extra === 'status' && (typeof event.data.status !== 'string' || !Object.hasOwn(listingStatusCopy, event.data.status)))
+          : booking
           ? keys.some((key) => !['bookingId', 'recipientSide', 'listingTitle', 'appointmentDate', 'startTime'].includes(key)) ||
             (Object.hasOwn(event.data, 'recipientSide') &&
               event.data.recipientSide !== 'OWNER' && event.data.recipientSide !== 'RENTER') ||
@@ -226,7 +296,12 @@ export function renderNotification(
       body: event.data.body,
     };
   }
-  const [category, title, body, idKey] = templates[event.eventType];
+  const [category, baseTitle, baseBody, idKey] = templates[event.eventType];
+  const statusCopy = event.eventType === 'LISTING_STATUS_CHANGED'
+    ? listingStatusCopy[event.data.status as keyof typeof listingStatusCopy]
+    : undefined;
+  const title: string = statusCopy?.[0] ?? baseTitle;
+  const body: string = statusCopy?.[1] ?? baseBody;
   const side = idKey === 'bookingId' ? event.data.recipientSide : undefined;
   const bookingPath = side === 'OWNER'
     ? '/dashboard/viewing-schedules'
@@ -238,15 +313,24 @@ export function renderNotification(
           ? `Lịch: ${event.data.appointmentDate.slice(8, 10)}/${event.data.appointmentDate.slice(5, 7)}/${event.data.appointmentDate.slice(0, 4)} lúc ${event.data.startTime}.`
           : '',
       ].filter(Boolean).join(' ')
-    : '';
+    : idKey === 'listingId' && event.data.listingTitle
+      ? `Tin: ${event.data.listingTitle.trim()}.`
+      : '';
   return {
     ...common,
     category: category as NotificationCategory,
     title,
     body: detail ? `${body} ${detail}` : body,
-    actionPath: bookingPath
-      ? `${bookingPath}?appointmentId=${encodeURIComponent(event.data.bookingId)}`
-      : '/notifications',
-    metadata: { [idKey]: event.data[idKey], ...(side ? { recipientSide: side } : {}) },
+    actionPath: idKey === 'listingId'
+      ? `/dashboard/properties/view?id=${encodeURIComponent(event.data.listingId)}`
+      : bookingPath
+        ? `${bookingPath}?appointmentId=${encodeURIComponent(event.data.bookingId)}`
+        : '/notifications',
+    metadata: {
+      [idKey]: event.data[idKey],
+      ...(side ? { recipientSide: side } : {}),
+      ...(idKey === 'listingId' && event.data.editId ? { editId: event.data.editId } : {}),
+      ...(idKey === 'listingId' && event.data.status ? { status: event.data.status } : {}),
+    },
   };
 }

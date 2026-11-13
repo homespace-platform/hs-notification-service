@@ -45,7 +45,7 @@ describe('notification event contract', () => {
     ).toMatchObject({
       category: 'LISTING',
       sourceEventId: 'event-1',
-      actionPath: '/notifications',
+      actionPath: '/dashboard/properties/view?id=listing-1',
     });
   });
   it.each([

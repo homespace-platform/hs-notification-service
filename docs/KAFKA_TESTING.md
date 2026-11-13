@@ -6,7 +6,9 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 
 | Event types                                                    | Required data                  | Category    |
 | -------------------------------------------------------------- | ------------------------------ | ----------- |
-| LISTING_APPROVED, LISTING_REJECTED                             | listingId                      | LISTING     |
+| LISTING_APPROVED, LISTING_REJECTED, LISTING_CREATED, LISTING_UPDATED, LISTING_EXPIRED | listingId; optional listingTitle | LISTING |
+| LISTING_EDIT_APPROVED, LISTING_EDIT_REJECTED                   | listingId, editId; optional listingTitle | LISTING |
+| LISTING_STATUS_CHANGED                                         | listingId, status (`PENDING_REVIEW`, `HIDDEN`, `VIOLATION`, `RENTED_EXTERNALLY`); optional listingTitle | LISTING |
 | BOOKING_REQUESTED, BOOKING_CONFIRMED, BOOKING_CANCELLED, BOOKING_REJECTED | bookingId; optional recipientSide | APPOINTMENT |
 | BOOKING_RESCHEDULE_REQUESTED, BOOKING_RESCHEDULE_APPROVED, BOOKING_RESCHEDULE_REJECTED | bookingId; optional recipientSide | APPOINTMENT |
 | BOOKING_COMPLETED, BOOKING_EXPIRED | bookingId; optional recipientSide | APPOINTMENT |
@@ -15,7 +17,24 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | CHAT_MESSAGE_RECEIVED                                          | conversationId                 | CHAT        |
 | PLATFORM_ANNOUNCEMENT                                          | title (1..200), body (1..2000) | SYSTEM      |
 
-Resource events use fixed templates. Booking `data.recipientSide` accepts only `OWNER` or `RENTER`: OWNER opens `/dashboard/viewing-schedules?appointmentId=<bookingId>`, RENTER opens `/dashboard/viewing-schedules/my-bookings?appointmentId=<bookingId>`. Booking events may also include `listingTitle` (plain text, 1–120 characters), `appointmentDate` (`YYYY-MM-DD`) and `startTime` (`HH:mm`) so the notification body identifies the listing and viewing time. `BOOKING_RESCHEDULE_REQUESTED` uses the proposed date/time; other booking events use the current date/time. Date and time appear together when both are present. The service constructs routes and content from these validated fields; producer URLs and other data fields are rejected. Legacy booking data containing only `bookingId` remains accepted and opens `/notifications`, as do other resource types. `bookingId` and the optional side remain in metadata. If a system event targets both sides, publish separate envelopes with the correct side and recipients. A cancellation event alone cannot determine which side receives it.
+Resource events use fixed templates. Booking `data.recipientSide` accepts only `OWNER` or `RENTER`: OWNER opens `/dashboard/viewing-schedules?appointmentId=<bookingId>`, RENTER opens `/dashboard/viewing-schedules/my-bookings?appointmentId=<bookingId>`. Booking events may also include `listingTitle` (plain text, 1–120 characters), `appointmentDate` (`YYYY-MM-DD`) and `startTime` (`HH:mm`) so the notification body identifies the listing and viewing time. `BOOKING_RESCHEDULE_REQUESTED` uses the proposed date/time; other booking events use the current date/time. Date and time appear together when both are present. The service constructs routes and content from these validated fields; producer URLs and other data fields are rejected. Legacy booking data containing only `bookingId` remains accepted and opens `/notifications`, as do other non-listing resource types. `bookingId` and the optional side remain in metadata. If a system event targets both sides, publish separate envelopes with the correct side and recipients. A cancellation event alone cannot determine which side receives it.
+
+## Listing events
+
+All listing events are category `LISTING`, priority `NORMAL`, v1 envelope unchanged. `data` accepts only the keys in the table above (no others, no producer URLs, reasons or private content). `listingId` and `editId` are identifiers; `listingTitle` is plain text, 1–120 characters (no `<`, `>` or control characters) and is appended to the in-app body as `Tin: <title>.`. `LISTING_APPROVED`/`LISTING_REJECTED` keep accepting the legacy `{listingId}` payload. Every listing event opens `/dashboard/properties/view?id=<encodeURIComponent(listingId)>`; metadata holds `listingId` plus `editId` or `status` when present (never the title). Titles/bodies are fixed server-owned Vietnamese templates; `LISTING_STATUS_CHANGED` uses status-specific copy.
+
+| Producer action (hs-core-api)                       | Event                    |
+| --------------------------------------------------- | ------------------------ |
+| Admin creates a listing                             | LISTING_CREATED          |
+| Admin saves a listing directly                      | LISTING_UPDATED          |
+| Admin publication decision                          | LISTING_APPROVED / LISTING_REJECTED |
+| Admin edit decision                                 | LISTING_EDIT_APPROVED / LISTING_EDIT_REJECTED |
+| Admin manual expiry, scheduler actual expiry        | LISTING_EXPIRED          |
+| Admin sets pending review, hidden, violation, rented externally | LISTING_STATUS_CHANGED |
+
+Edit approval does not imply the listing is published, and edit rejection does not imply the whole listing was rejected. Expiry means the publication window ended, including while an edit is under review. Owner self-actions and generic rental/contract state changes do not publish listing events.
+
+**Rollout order:** deploy and verify this consumer before `hs-core-api` publishes the new types or the optional `listingTitle`. Older strict consumers send unknown types and fields to the DLT. Use `listingId` as the Kafka key and a new immutable event ID per transition.
 
 Announcements accept plain text only (no HTML/control characters), with no producer URLs. All priorities are NORMAL, including scheduler booking events. Private chat text, financial details and rejection reasons are deliberately absent. Publish each transition with a new immutable event ID (not the booking ID reused across its lifecycle), use the booking ID as Kafka key, and serialize `occurredAt` with exactly three UTC millisecond digits.
 
