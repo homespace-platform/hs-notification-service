@@ -328,40 +328,11 @@ const invoiceTemplates = {
 const isInvoiceType = (value: string): value is keyof typeof invoiceTemplates =>
   Object.hasOwn(invoiceTemplates, value);
 
-// Move-in handover events (Phase 5): data is exactly {contractId} (the root lease id), one persisted party per envelope.
-// Copy is static, names no person, role, revision, amount or free text, and always sends the viewer to the CURRENT record
-// (the record can change after the event; a notice never promises it is still awaiting anything).
-const handoverTemplates = {
-  MOVE_IN_HANDOVER_PROPOSED: [
-    'Biên bản bàn giao nhận nhà đã được cập nhật',
-    'Một biên bản bàn giao nhận nhà đã được lập hoặc cập nhật. Vui lòng mở biên bản để xem nội dung và trạng thái hiện tại.',
-  ],
-  MOVE_IN_HANDOVER_CONFIRMED: [
-    'Biên bản bàn giao nhận nhà có xác nhận mới',
-    'Một bên đã xác nhận biên bản bàn giao nhận nhà. Vui lòng mở biên bản để xem trạng thái hiện tại.',
-  ],
-  MOVE_IN_HANDOVER_COMPLETED: [
-    'Biên bản bàn giao nhận nhà đã hoàn tất',
-    'Hai bên đã xác nhận biên bản bàn giao nhận nhà. Vui lòng mở biên bản để xem chi tiết; đây không phải xác nhận đã nhận tiền.',
-  ],
-  // Phase 6A: landlord-only trigger from Core; copy must not claim a handover record or proposal already exists.
-  MOVE_IN_HANDOVER_READY: [
-    'Hợp đồng thuê đã ký, có thể bắt đầu bàn giao',
-    'Hợp đồng thuê đã ký đã sẵn sàng. Chủ nhà có thể xem hoặc ghi nhận việc bàn giao nhận nhà. Vui lòng mở trang để xem trạng thái hiện tại.',
-  ],
-  MOVE_IN_HANDOVER_DISPUTED: [
-    'Có báo cáo vấn đề về biên bản bàn giao',
-    'Một bên đã báo vấn đề về biên bản bàn giao nhận nhà. Vui lòng mở biên bản để xem trạng thái hiện tại.',
-  ],
-} as const;
-const isHandoverType = (value: string): value is keyof typeof handoverTemplates =>
-  Object.hasOwn(handoverTemplates, value);
-
 // Signing events (Phase 6A): data is exactly {agreementId, agreementKind}, one persisted party per envelope.
 // agreementId is the exact signing-envelope id (root id only for root lease/deposit).
 // Copy is static and kind-neutral: no role, date, money, reason, failure code, valid/invalid-signature assertion or
 // promise that terms were applied; every notice sends the viewer to the CURRENT status.
-const agreementKinds = ['LEASE', 'DEPOSIT', 'AMENDMENT', 'RENEWAL', 'MOVE_IN', 'EARLY_EXIT'];
+const agreementKinds = ['LEASE', 'DEPOSIT', 'AMENDMENT', 'RENEWAL', 'EARLY_EXIT'];
 const agreementTemplates = {
   AGREEMENT_REVIEW_READY: [
     'Có tài liệu ký cần xem xét',
@@ -465,7 +436,6 @@ export interface NotificationEvent {
     | keyof typeof accountTemplates
     | keyof typeof paymentTemplates
     | keyof typeof invoiceTemplates
-    | keyof typeof handoverTemplates
     | keyof typeof agreementTemplates
     | keyof typeof amendmentTemplates
     | keyof typeof renewalTemplates
@@ -520,7 +490,6 @@ export function parseNotificationEvent(
         isAccountType(input.eventType) ||
         isPaymentType(input.eventType) ||
         isInvoiceType(input.eventType) ||
-        isHandoverType(input.eventType) ||
         isAgreementType(input.eventType) ||
         isAmendmentType(input.eventType) ||
         isRenewalType(input.eventType) ||
@@ -562,14 +531,6 @@ export function parseNotificationEvent(
         Object.keys(event.data).sort().join(',') !== 'contractId,invoiceId' ||
         !identifier(event.data.contractId) ||
         !identifier(event.data.invoiceId)
-      )
-        throw new InvalidNotificationEvent();
-    } else if (isHandoverType(event.eventType)) {
-      // One persisted party and only the root lease id; Core decides recipients and state, never the consumer.
-      if (
-        event.recipients.length !== 1 ||
-        Object.keys(event.data).sort().join(',') !== 'contractId' ||
-        !identifier(event.data.contractId)
       )
         throw new InvalidNotificationEvent();
     } else if (isAgreementType(event.eventType)) {
@@ -679,18 +640,6 @@ export function renderNotification(
       metadata: { contractId, invoiceId },
     };
   }
-  if (isHandoverType(event.eventType)) {
-    const [title, body] = handoverTemplates[event.eventType];
-    const { contractId } = event.data;
-    return {
-      ...common,
-      category: 'CONTRACT',
-      title,
-      body,
-      actionPath: `/dashboard/invoices/${encodeURIComponent(contractId)}?section=deposit&workflow=move-in`,
-      metadata: { contractId },
-    };
-  }
   if (isAgreementType(event.eventType)) {
     const [title, body] = agreementTemplates[event.eventType];
     const { agreementId, agreementKind } = event.data;
@@ -699,7 +648,7 @@ export function renderNotification(
       category: 'CONTRACT',
       title,
       body,
-      actionPath: `/dashboard/contracts/${encodeURIComponent(agreementId)}${agreementKind === 'MOVE_IN' ? '?workflow=move-in' : ''}`,
+      actionPath: `/dashboard/contracts/${encodeURIComponent(agreementId)}`,
       metadata: { agreementId, agreementKind },
     };
   }

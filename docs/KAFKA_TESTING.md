@@ -20,7 +20,6 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | MEMBERSHIP_ACTIVATED, MEMBERSHIP_PAYMENT_REVIEW                | orderId (only key)             | PAYMENT     |
 | PAYMENT_REQUEST_CREATED, PAYMENT_TRANSFER_REPORTED, PAYMENT_RECEIPT_CONFIRMED, PAYMENT_RECEIPT_REJECTED, PAYMENT_DISPUTE_OPENED, PAYMENT_DISPUTE_EVIDENCE_ADDED, PAYMENT_DISPUTE_PROPOSED, PAYMENT_DISPUTE_PROPOSAL_DECLINED, PAYMENT_DISPUTE_ESCALATED, PAYMENT_DISPUTE_REVIEW_TRANSFER, PAYMENT_DISPUTE_REOPENED | paymentId (only key), exactly one recipient | PAYMENT |
 | INVOICE_DRAFT_READY, INVOICE_ISSUED, INVOICE_OVERDUE, INVOICE_AMOUNT_UPDATED, INVOICE_EXTENSION_REQUESTED, INVOICE_EXTENSION_APPROVED, INVOICE_EXTENSION_REJECTED, INVOICE_EXTENSION_EXPIRED, INVOICE_OVERDUE_ACTION_RECORDED, INVOICE_OVERDUE_ACTION_ACKNOWLEDGED, INVOICE_DEFERRED, INVOICE_ROLLED_OVER, INVOICE_OVERDUE_ACTION_REQUIRED | contractId, invoiceId (only keys), exactly one recipient | PAYMENT |
-| MOVE_IN_HANDOVER_PROPOSED, MOVE_IN_HANDOVER_CONFIRMED, MOVE_IN_HANDOVER_COMPLETED, MOVE_IN_HANDOVER_DISPUTED, MOVE_IN_HANDOVER_READY | contractId (only key), exactly one recipient | CONTRACT |
 | AGREEMENT_REVIEW_READY, AGREEMENT_SIGNING_TURN, AGREEMENT_FULLY_SIGNED, AGREEMENT_SIGNATURE_NEEDS_REVIEW | agreementId + agreementKind (only keys), exactly one recipient | CONTRACT |
 | AMENDMENT_RESPONSE_NEEDED, AMENDMENT_DECIDED, AMENDMENT_WITHDRAWN, AMENDMENT_EXPIRED, AMENDMENT_APPLIED | contractId (only key), exactly one recipient | CONTRACT |
 | RENEWAL_REQUESTED, RENEWAL_APPROVED, RENEWAL_REJECTED, RENEWAL_EXPIRED | contractId (only key), exactly one recipient | CONTRACT |
@@ -148,36 +147,25 @@ Use a new immutable `eventId` per distinct outcome and recipient, and `invoiceId
 
 **Rollout order:** consumer (this service) → web → producer (`hs-core-api`). An older strict consumer treats the new types as unknown, sends them to the DLT and commits the offset, so the producer must not publish before every consumer replica runs this version; lost events can be recovered only by republishing the retained source record with the same `eventId`.
 
-## Move-in handover events
+## Removed move-in handover events
 
-Five types: `MOVE_IN_HANDOVER_PROPOSED`, `MOVE_IN_HANDOVER_CONFIRMED`, `MOVE_IN_HANDOVER_COMPLETED`, `MOVE_IN_HANDOVER_DISPUTED`, `MOVE_IN_HANDOVER_READY` (Phase 6A). Category `CONTRACT` (existing), priority `NORMAL`, v1 envelope unchanged. Preferences, schema, topics and config are unchanged. Separate from the legacy `CONTRACT_*` types and from invoice types; the consumer branches on the exact event name.
-
-- `recipients` must contain **exactly one** entry (a persisted party chosen by Core; the consumer never invents recipients or state). A two-party outcome is two envelopes with distinct immutable `eventId`s.
-- `data` must be exactly `{ "contractId": "<root lease id>" }` under the standard identifier rule. Any other key (invoice/handover id, revision, role, amount, note, reason, actor, side, URL, path…) is rejected and goes to the DLT.
-- Metadata is exactly `{contractId}`. The route is fixed by the service: `/dashboard/invoices/<encodeURIComponent(contractId)>?section=deposit&workflow=move-in`. The page loads the current record with the viewer's own authorization.
-- Copy is static Vietnamese and refers to the current record, never to private or free text: PROPOSED = record created or updated; CONFIRMED = one party confirmed (open to see current state, not a promise it is still awaiting anyone); COMPLETED = both parties confirmed (not money received); DISPUTED = a party reported a problem with the record (not a complaint resolution). Push stays the generic signal.
-- Core triggers (for reference, not enforced here): CONFIRMED is the first human confirmation in either direction; a human completing only the other party's confirmation, or a trusted SmartCA signature, emits COMPLETED with no intermediate event; a repeated dispute is silent.
-- `MOVE_IN_HANDOVER_READY` (Phase 6A, Core sends to the landlord only): the signed lease is available and the landlord can inspect or record the handover. Same data, metadata and route as above. Copy does not claim a handover record or proposal exists.
-
-Use `contractId` as the Kafka key and a new immutable `eventId` per distinct outcome and recipient. Publish from the same transaction as the state change (outbox); no-op, replayed or rolled-back actions publish nothing.
-
-**Rollout order:** consumer (this service) → web → producer (`hs-core-api`). An older strict consumer treats the new types as unknown, sends them to the DLT and commits the offset, so the producer must not publish before every consumer replica runs this version; lost events can be recovered only by republishing the retained source record with the same `eventId`.
+The separate move-in handover feature was removed. `MOVE_IN_HANDOVER_*` types and `agreementKind: MOVE_IN` are no longer accepted: the strict parser rejects them as unknown/invalid and, like any invalid message, they follow the existing redacted DLT path (no topic, offset or database cleanup). Return, settlement, payment and lease events are unaffected.
 
 ## Agreement signing events (Phase 6A)
 
-Four types: `AGREEMENT_REVIEW_READY`, `AGREEMENT_SIGNING_TURN`, `AGREEMENT_FULLY_SIGNED`, `AGREEMENT_SIGNATURE_NEEDS_REVIEW`. Category `CONTRACT`, priority `NORMAL`, v1 envelope unchanged; separate from legacy `CONTRACT_*` and the handover family. No schema, preference, topic or config change.
+Four types: `AGREEMENT_REVIEW_READY`, `AGREEMENT_SIGNING_TURN`, `AGREEMENT_FULLY_SIGNED`, `AGREEMENT_SIGNATURE_NEEDS_REVIEW`. Category `CONTRACT`, priority `NORMAL`, v1 envelope unchanged; separate from legacy `CONTRACT_*`. No schema, preference, topic or config change.
 
 - `recipients` must contain **exactly one** entry; Core owns triggers and recipients. A two-party outcome is two envelopes with distinct `eventId`s.
 - `data` must be exactly `{ "agreementId", "agreementKind" }`; `agreementId` follows the standard identifier rule and is the exact signing-envelope id (the root id only for the root lease/deposit). Any other key (role, revision, amount, reason, failure code, date, PDF/URL, actor…) is rejected and goes to the DLT.
-- All four types accept the same closed `agreementKind` enum: `LEASE | DEPOSIT | AMENDMENT | RENEWAL | MOVE_IN | EARLY_EXIT`. `AGREEMENT_REVIEW_READY` includes AMENDMENT (Phase 6B), RENEWAL (Phase 6C) and EARLY_EXIT (Phase 6D) signing children; unknown kinds are rejected. The exact child signing identity stays separate from root decision events.
-- Metadata is exactly `{agreementId, agreementKind}`. Route: `/dashboard/contracts/<encodeURIComponent(agreementId)>`, plus `?workflow=move-in` only for `MOVE_IN`.
+- All four types accept the same closed `agreementKind` enum: `LEASE | DEPOSIT | AMENDMENT | RENEWAL | EARLY_EXIT`. `AGREEMENT_REVIEW_READY` includes AMENDMENT (Phase 6B), RENEWAL (Phase 6C) and EARLY_EXIT (Phase 6D) signing children; unknown or removed kinds (including `MOVE_IN`) are rejected. The exact child signing identity stays separate from root decision events.
+- Metadata is exactly `{agreementId, agreementKind}`. Route: `/dashboard/contracts/<encodeURIComponent(agreementId)>`.
 - Copy is static, kind-neutral Vietnamese and always points to the current status: REVIEW_READY = a document was created and may need review (not a ready-PDF or signable guarantee); SIGNING_TURN = the other party completed their part (no digital-signature-verified claim, it also covers internal signing); FULLY_SIGNED = required signatures verified complete, not a claim that terms were applied; SIGNATURE_NEEDS_REVIEW = an async signature request could not complete and needs checking, open the status or contact support (no valid/invalid-signature assertion, no retry or block promise).
 
 Use `agreementId` as the Kafka key and a new immutable `eventId` per distinct outcome and recipient; publish from the same transaction as the state change.
 
-**Rollout order:** consumer (this service) → web → producer (`hs-core-api`). An older strict consumer sends the new types (and `MOVE_IN_HANDOVER_READY`) to the DLT and commits the offset, so Core must not publish before every consumer replica runs this version.
+**Rollout order:** consumer (this service) → web → producer (`hs-core-api`). An older strict consumer sends the new types to the DLT and commits the offset, so Core must not publish before every consumer replica runs this version.
 
-**Smoke:** `npm run test:backend` (real Kafka + MongoDB, database `homespace_notification_test`, topics `homespace.notification.test.*`, push and socket off, no cleanup) covers the four agreement types across LEASE, DEPOSIT, AMENDMENT, RENEWAL, MOVE_IN and EARLY_EXIT, rejects unknown kinds, and covers `MOVE_IN_HANDOVER_READY`.
+**Smoke:** `npm run test:backend` (real Kafka + MongoDB, database `homespace_notification_test`, topics `homespace.notification.test.*`, push and socket off, no cleanup) covers the four agreement types across LEASE, DEPOSIT, AMENDMENT, RENEWAL and EARLY_EXIT, and rejects unknown kinds (including `MOVE_IN`).
 
 ## Amendment decision events (Phase 6B)
 

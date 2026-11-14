@@ -5,7 +5,7 @@ import { NotificationEventsConsumer } from './notification-events.consumer';
 import { NotificationService } from '../notification/application/notification.service';
 
 const types = ['AGREEMENT_REVIEW_READY', 'AGREEMENT_SIGNING_TURN', 'AGREEMENT_FULLY_SIGNED', 'AGREEMENT_SIGNATURE_NEEDS_REVIEW'];
-const kinds = ['LEASE', 'DEPOSIT', 'AMENDMENT', 'RENEWAL', 'MOVE_IN', 'EARLY_EXIT'];
+const kinds = ['LEASE', 'DEPOSIT', 'AMENDMENT', 'RENEWAL', 'EARLY_EXIT'];
 const matrix = types.flatMap(type => kinds.map(kind => [type, kind] as const));
 const agreementId = '0f1e2d3c-4b5a-4968-8776-655443322110';
 const event = (type = types[0], overrides: Record<string, unknown> = {}) => ({
@@ -15,8 +15,7 @@ const event = (type = types[0], overrides: Record<string, unknown> = {}) => ({
 const withKind = (type: string, agreementKind: unknown, id: unknown = agreementId) => event(type, { data: { agreementId: id, agreementKind } });
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));
 const parse = (value: unknown) => parseNotificationEvent(encode(value));
-const routeFor = (kind: string, id = agreementId) =>
-  `/dashboard/contracts/${encodeURIComponent(id)}${kind === 'MOVE_IN' ? '?workflow=move-in' : ''}`;
+const routeFor = (_kind: string, id = agreementId) => `/dashboard/contracts/${encodeURIComponent(id)}`;
 const copy = (type: string) => { const r = renderNotification(parse(event(type)), 'p'); return `${r.title} ${r.body}`; };
 
 describe('agreement signing notification acceptance', () => {
@@ -34,9 +33,12 @@ describe('agreement signing notification acceptance', () => {
       for (const type of types) expect(() => parse(withKind(type, kind))).toThrow('Invalid notification event');
     });
 
-  it('encodes the id; only MOVE_IN gets the workflow suffix', () => {
+  it('encodes the id without any workflow suffix', () => {
     expect(renderNotification(parse(withKind(types[1], 'AMENDMENT', 'a_b-1')), 'p').actionPath).toBe('/dashboard/contracts/a_b-1');
-    expect(renderNotification(parse(withKind(types[1], 'MOVE_IN', 'a_b-1')), 'p').actionPath).toBe('/dashboard/contracts/a_b-1?workflow=move-in');
+  });
+
+  it('rejects the removed MOVE_IN kind for every type', () => {
+    for (const type of types) expect(() => parse(withKind(type, 'MOVE_IN'))).toThrow('Invalid notification event');
   });
 
   it.each(['contractId', 'invoiceId', 'envelopeId', 'revision', 'role', 'amount', 'note', 'reason', 'failureCode', 'pdfUrl', 'actorId',
@@ -50,7 +52,7 @@ describe('agreement signing notification acceptance', () => {
     for (const type of types) expect(() => parse(event(type, { data }))).toThrow('Invalid notification event');
   });
 
-  it.each([null, '', 3, '../x', 'a/b', 'a?b', '<script>', 'x'.repeat(201), ' a', 'a b', '?workflow=move-in'])('rejects unsafe agreement id %j', id => {
+  it.each([null, '', 3, '../x', 'a/b', 'a?b', '<script>', 'x'.repeat(201), ' a', 'a b', '?workflow=early-exit'])('rejects unsafe agreement id %j', id => {
     for (const type of types) expect(() => parse(withKind(type, 'LEASE', id))).toThrow('Invalid notification event');
   });
 
@@ -60,16 +62,13 @@ describe('agreement signing notification acceptance', () => {
     for (const type of types) expect(() => parse(event(type, overrides))).toThrow('Invalid notification event');
   });
 
-  it('keeps legacy contract, handover, invoice and membership contracts unaffected', () => {
+  it('keeps legacy contract, invoice and membership contracts unaffected', () => {
     const legacy = renderNotification(parse(event('CONTRACT_SIGNED', { recipients: ['a', 'b'], data: { contractId: 'legacy-1' } })), 'a');
     expect(legacy.actionPath).not.toMatch(/dashboard\/contracts|workflow/);
-    expect(renderNotification(parse(event('MOVE_IN_HANDOVER_READY', { data: { contractId: agreementId } })), 'p').actionPath)
-      .toBe(`/dashboard/invoices/${agreementId}?section=deposit&workflow=move-in`);
     expect(parse(event('INVOICE_ISSUED', { data: { contractId: agreementId, invoiceId: 'inv-1' } })).eventType).toBe('INVOICE_ISSUED');
     expect(parse(event('MEMBERSHIP_ACTIVATED', { data: { orderId: 'order-1' } })).eventType).toBe('MEMBERSHIP_ACTIVATED');
     // Agreement identity never satisfies other shapes (and vice versa).
     expect(() => parse(event('CONTRACT_SIGNED', { data: { agreementId, agreementKind: 'LEASE' } }))).toThrow();
-    expect(() => parse(event('MOVE_IN_HANDOVER_READY', { data: { agreementId, agreementKind: 'MOVE_IN' } }))).toThrow();
     expect(() => parse(event(types[0], { data: { contractId: agreementId } }))).toThrow();
   });
 

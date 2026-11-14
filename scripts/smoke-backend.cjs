@@ -309,35 +309,7 @@ async function main() {
     assert.equal((await call('/feed?category=PAYMENT&limit=50', 'GET', undefined, invoiceRecipient)).result.items.length, invoiceTypes.length);
     assert.equal((await call('/feed?category=PAYMENT', 'GET', undefined, renter)).result.items.length, 0);
     assert.equal((await call('/feed?category=PAYMENT&limit=50', 'GET', undefined, paymentRecipient)).result.items.filter(row => row.type.startsWith('INVOICE_')).length, 0);
-    const handoverTypes = ['MOVE_IN_HANDOVER_PROPOSED', 'MOVE_IN_HANDOVER_CONFIRMED', 'MOVE_IN_HANDOVER_COMPLETED', 'MOVE_IN_HANDOVER_DISPUTED', 'MOVE_IN_HANDOVER_READY'];
-    const handoverContractId = randomUUID();
-    const handoverRecipient = `handover-${suffix}`;
-    await producer.send({ topic, acks: -1, messages: handoverTypes.flatMap(eventType => {
-      const event = { version: 1, eventId: randomUUID(), eventType, occurredAt: new Date().toISOString(),
-        recipients: [handoverRecipient], data: { contractId: handoverContractId } };
-      const message = { key: handoverContractId, value: JSON.stringify(event) };
-      return [message, message];
-    }) });
-    let handoverRows = [];
-    const handoverDeadline = Date.now() + 30000;
-    while (Date.now() < handoverDeadline) {
-      handoverRows = (await call('/feed?category=CONTRACT&limit=50', 'GET', undefined, handoverRecipient)).result.items;
-      if (handoverRows.length === handoverTypes.length) break;
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-    assert.deepEqual(handoverRows.map(row => row.type).sort(), [...handoverTypes].sort(), '5 handover outcomes persisted once');
-    for (const row of handoverRows) {
-      assert.deepEqual(row.metadata, { contractId: handoverContractId });
-      assert.equal(row.actionPath, `/dashboard/invoices/${handoverContractId}?section=deposit&workflow=move-in`);
-      assert.equal(row.category, 'CONTRACT'); assert.equal(row.priority, 'NORMAL');
-      assert.equal(Object.hasOwn(row, 'recipientId'), false);
-      await call(`/${row.id}/read`, 'PATCH', undefined, 'other-user', 404);
-      await call(`/${row.id}`, 'DELETE', undefined, 'other-user', 404);
-    }
-    await call('/preferences', 'PUT', { items: [{ category: 'CONTRACT', push: false, email: false }] }, handoverRecipient);
-    assert.equal((await call('/feed?category=CONTRACT&limit=50', 'GET', undefined, handoverRecipient)).result.items.length, handoverTypes.length);
-    assert.equal((await call('/feed?category=CONTRACT&limit=50', 'GET', undefined, invoiceRecipient)).result.items.length, 0);
-    const agreementKinds = ['LEASE', 'DEPOSIT', 'AMENDMENT', 'RENEWAL', 'MOVE_IN', 'EARLY_EXIT'];
+    const agreementKinds = ['LEASE', 'DEPOSIT', 'AMENDMENT', 'RENEWAL', 'EARLY_EXIT'];
     const agreementTypes = ['AGREEMENT_REVIEW_READY', 'AGREEMENT_SIGNING_TURN', 'AGREEMENT_FULLY_SIGNED', 'AGREEMENT_SIGNATURE_NEEDS_REVIEW'];
     const agreementRecipient = `agreement-${suffix}`;
     const agreementIds = Object.fromEntries(agreementKinds.map(kind => [kind, randomUUID()]));
@@ -345,7 +317,7 @@ async function main() {
       .map(kind => ({ version: 1, eventId: randomUUID(), eventType, occurredAt: new Date().toISOString(),
         recipients: [agreementRecipient], data: { agreementId: agreementIds[kind], agreementKind: kind } })));
     // Invalid shapes go through the same topic: unknown kinds must never persist.
-    const agreementInvalid = [['AGREEMENT_SIGNING_TURN', 'UNKNOWN'], ['AGREEMENT_REVIEW_READY', 'UNKNOWN']].map(([eventType, kind]) => ({
+    const agreementInvalid = [['AGREEMENT_SIGNING_TURN', 'UNKNOWN'], ['AGREEMENT_REVIEW_READY', 'UNKNOWN'], ['AGREEMENT_REVIEW_READY', 'MOVE_IN']].map(([eventType, kind]) => ({
       version: 1, eventId: randomUUID(), eventType, occurredAt: new Date().toISOString(),
       recipients: [agreementRecipient], data: { agreementId: randomUUID(), agreementKind: kind } }));
     await producer.send({ topic, acks: -1, messages: [...agreementInvalid, ...agreementEvents].flatMap(event => {
@@ -365,7 +337,7 @@ async function main() {
     for (const row of agreementRows) {
       const { agreementKind } = row.metadata;
       assert.deepEqual(row.metadata, { agreementId: agreementIds[agreementKind], agreementKind });
-      assert.equal(row.actionPath, `/dashboard/contracts/${agreementIds[agreementKind]}${agreementKind === 'MOVE_IN' ? '?workflow=move-in' : ''}`);
+      assert.equal(row.actionPath, `/dashboard/contracts/${agreementIds[agreementKind]}`);
       assert.equal(row.category, 'CONTRACT'); assert.equal(row.priority, 'NORMAL');
       assert.equal(Object.hasOwn(row, 'recipientId'), false);
       await call(`/${row.id}/read`, 'PATCH', undefined, 'other-user', 404);
@@ -373,7 +345,7 @@ async function main() {
     }
     await call('/preferences', 'PUT', { items: [{ category: 'CONTRACT', push: false, email: false }] }, agreementRecipient);
     assert.equal((await call('/feed?category=CONTRACT&limit=50', 'GET', undefined, agreementRecipient)).result.items.length, agreementEvents.length);
-    assert.equal((await call('/feed?category=CONTRACT&limit=50', 'GET', undefined, handoverRecipient)).result.items.filter(row => row.type.startsWith('AGREEMENT_')).length, 0);
+    assert.equal((await call('/feed?category=CONTRACT&limit=50', 'GET', undefined, invoiceRecipient)).result.items.filter(row => row.type.startsWith('AGREEMENT_')).length, 0);
     const amendmentTypes = ['AMENDMENT_RESPONSE_NEEDED', 'AMENDMENT_DECIDED', 'AMENDMENT_WITHDRAWN', 'AMENDMENT_EXPIRED', 'AMENDMENT_APPLIED'];
     const amendmentContractId = randomUUID(), amendmentRecipient = `amendment-${suffix}`;
     await producer.send({ topic, acks: -1, messages: amendmentTypes.flatMap(eventType => {
@@ -511,7 +483,6 @@ async function main() {
     }
     console.log('PASS return/settlement: 9 root outcomes + obligation overdue, replay dedupe, fixed routes, exact metadata, authorization, disabled preferences and 13 invalid payloads in redacted DLT');
     console.log(`PASS agreement signing: 4 types x allowed kinds (${agreementEvents.length} events), replay dedupe, unknown-kind rejection, fixed routes, exact metadata and recipient isolation`);
-    console.log('PASS move-in handover: 5 outcomes (incl. READY), replay dedupe, fixed deposit route, exact metadata, recipient isolation and CONTRACT preference');
     console.log('PASS invoices: 13 outcomes, replay dedupe, fixed monthly route, exact metadata, recipient isolation and PAYMENT preference');
     console.log('PASS payments: 11 outcomes, replay dedupe, authorized common routes and recipient isolation');
     console.log('PASS membership: 2 verified outcomes, replay dedupe, owner routes and no private provider data');

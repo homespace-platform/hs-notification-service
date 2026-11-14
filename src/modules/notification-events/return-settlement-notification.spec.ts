@@ -84,7 +84,6 @@ describe('return, settlement and obligation deadline contract', () => {
     ['INVOICE_ISSUED', { contractId: resourceId, invoiceId: 'bill-1' }, `/dashboard/invoices/${resourceId}?section=monthly&invoice=bill-1`],
     ['TERMINATION_ENDED', { contractId: resourceId }, `/dashboard/contracts/${resourceId}`],
     ['LEASE_EXPIRED', { contractId: resourceId }, `/dashboard/contracts/${resourceId}`],
-    ['MOVE_IN_HANDOVER_READY', { contractId: resourceId }, `/dashboard/invoices/${resourceId}?section=deposit&workflow=move-in`],
     ['AGREEMENT_FULLY_SIGNED', { agreementId: 'exact-child', agreementKind: 'EARLY_EXIT' }, '/dashboard/contracts/exact-child'],
   ])('preserves previous family %s identity and route', (type, data, path) => {
     expect(renderNotification(parse(event(type as string, { data })), 'stored-party'))

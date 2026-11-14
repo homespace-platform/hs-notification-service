@@ -1,6 +1,6 @@
 # Phase 4 — Monthly invoice notifications
 
-**Current status (2026-11-14): ACCEPTED locally by Codex (root).** Codex reviewed the writer, publisher, hooks, the narrowed acknowledgement scope and the explicit-reject fee catch-up, and accepted Phase 4 together with the final web fix below. All three audits were received, the 13-type matrix is frozen, Core/consumer/web source and tests were run (evidence below). Acceptance is local only: no commit, push or deploy. Phase 5 (move-in) and Phase 6 (contract lifecycle) are NOT done. L3 (money, immutable issued invoices, schedules, identity, transactions, Kafka).
+**Current status (2026-11-14): ACCEPTED locally by Codex (root).** Codex reviewed the writer, publisher, hooks, the narrowed acknowledgement scope and the explicit-reject fee catch-up, and accepted Phase 4 together with the final web fix below. All three audits were received, the 13-type matrix is frozen, Core/consumer/web source and tests were run (evidence below). Acceptance is local only: no commit, push or deploy. Phase 6 (contract lifecycle) was NOT done at this checkpoint. L3 (money, immutable issued invoices, schedules, identity, transactions, Kafka).
 
 Dispatch history: the first Core dispatch was intentionally paused for code review (not a failure) and the user resumed it. Live workers: Core `ctx_a4227f169a2d` (task_720cc22eca69, sole Maven/`target`/PostgreSQL owner), consumer `ctx_98dd389163bb` (Java-fixture follow-up `ctx_5e8356b816d4`), web `ctx_38561ecddaab`.
 
@@ -79,7 +79,7 @@ Logs under `C:/Users/nvmin/AppData/Local/Temp/`:
 - Accepted locally by Codex: writer, publisher, MonthlyBillingService/ContractLifecycleService hooks, the narrowed acknowledgement scope (only PAYMENT_REQUEST, EXTENSION_PROPOSAL, MUTUAL_TERMINATION_PROPOSAL, LEGAL_REVIEW notify the landlord; termination/system entries stay silent for Phase 6) and the explicit-reject case (AMOUNT_UPDATED may follow EXTENSION_REJECTED only when the catch-up fee really changed the payment amount).
 - Consumer and web evidence above, plus the final web synthetic first-rent query fix, accepted as reported.
 - Rollout order unchanged: consumer, then web, then Core. Not committed, pushed or deployed.
-- Pending: Phase 5 (move-in; core audit `ctx_e369782f2ab3` started, web audit `ctx_286b554327d0` finished) and Phase 6 (staged contract lifecycle, including the termination/legacy-mutual/draft-trim inventory above). The Phase 4 limits below are preserved, not resolved.
+- Pending: Phase 6 (staged contract lifecycle, including the termination/legacy-mutual/draft-trim inventory above). The Phase 4 limits below are preserved, not resolved.
 
 ## Limits and unverified risks (honest)
 - Auto-issue time and missing meters: docs say 10:00 and "keep draft"; source auto-issues from 00:00 of the day after the period and auto-fills missing readings with zero usage (flagged), stalling only on STATE_WATER_RATE charges, an incomplete previous period or incomplete terms. NOT changed; copy is generic.
