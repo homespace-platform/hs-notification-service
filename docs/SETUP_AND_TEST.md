@@ -73,7 +73,7 @@ Các event, dữ liệu yêu cầu, lệnh publisher và cách phục hồi DLT:
 
 ## 4. Realtime và Firebase
 
-Bật `NOTIFICATION_REALTIME_ENABLED=true`, điền `KEYCLOAK_ISSUER_URL` đúng realm issuer, `KEYCLOAK_AUDIENCE` đúng audience của access token và `NOTIFICATION_REALTIME_ORIGINS` là các origin cụ thể phân cách bằng dấu phẩy. Socket.IO websocket tại `http://localhost:8085/notifications`, path `/socket.io`; handshake gửi `auth.token`. Server xác minh JWT/JWKS và tự chọn room theo `sub`. Token hết hạn bị ngắt kết nối. Gateway WebSocket route chưa được bổ sung; kiểm thử trực tiếp service theo [REALTIME_TESTING.md](docs/REALTIME_TESTING.md).
+Realtime luôn bật. Điền `KEYCLOAK_ISSUER_URL` đúng realm issuer, `KEYCLOAK_AUDIENCE` đúng audience của access token và `NOTIFICATION_REALTIME_ORIGINS` là các origin cụ thể phân cách bằng dấu phẩy. Socket.IO websocket tại `http://localhost:8085/notifications`, path `/socket.io`; handshake gửi `auth.token`. Server xác minh JWT/JWKS và tự chọn room theo `sub`. Token hết hạn bị ngắt kết nối. Gateway WebSocket route chưa được bổ sung; kiểm thử trực tiếp service theo [REALTIME_TESTING.md](docs/REALTIME_TESTING.md).
 
 Bật `PUSH_ENABLED=true` sau khi điền `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` từ service account. Xem [PUSH_SETUP.md](docs/PUSH_SETUP.md) cho Firebase Console, FID registration và thao tác kiểm thử. Không lấy private key này từ cấu hình Firebase Web công khai. Đây là FID đã đăng ký với Firebase, không phải tự tạo chuỗi để gửi push thật.
 

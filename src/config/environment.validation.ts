@@ -71,7 +71,7 @@ export function validateEnvironment(config: Record<string, unknown>) {
     return value;
   };
   const settings: Record<string, unknown> = { ...validated };
-  for (const name of ['KAFKA_ENABLED', 'PUSH_ENABLED', 'NOTIFICATION_REALTIME_ENABLED']) {
+  for (const name of ['KAFKA_ENABLED', 'PUSH_ENABLED']) {
     settings[name] = feature(name);
   }
   if (settings.KAFKA_ENABLED) {
@@ -83,14 +83,12 @@ export function validateEnvironment(config: Record<string, unknown>) {
   if (settings.PUSH_ENABLED) {
     for (const name of ['FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY']) settings[name] = required(name);
   }
-  if (settings.NOTIFICATION_REALTIME_ENABLED) {
-    for (const name of ['KEYCLOAK_ISSUER_URL', 'KEYCLOAK_AUDIENCE', 'NOTIFICATION_REALTIME_ORIGINS']) settings[name] = required(name);
-    const issuer = new URL(settings.KEYCLOAK_ISSUER_URL as string);
-    if (!['http:', 'https:'].includes(issuer.protocol) || issuer.username || issuer.password || issuer.search || issuer.hash) throw new Error('Invalid KEYCLOAK_ISSUER_URL');
-    for (const origin of (settings.NOTIFICATION_REALTIME_ORIGINS as string).split(',')) {
-      const parsed = new URL(origin.trim());
-      if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== origin.trim()) throw new Error('Invalid NOTIFICATION_REALTIME_ORIGINS');
-    }
+  for (const name of ['KEYCLOAK_ISSUER_URL', 'KEYCLOAK_AUDIENCE', 'NOTIFICATION_REALTIME_ORIGINS']) settings[name] = required(name);
+  const issuer = new URL(settings.KEYCLOAK_ISSUER_URL as string);
+  if (!['http:', 'https:'].includes(issuer.protocol) || issuer.username || issuer.password || issuer.search || issuer.hash) throw new Error('Invalid KEYCLOAK_ISSUER_URL');
+  for (const origin of (settings.NOTIFICATION_REALTIME_ORIGINS as string).split(',')) {
+    const parsed = new URL(origin.trim());
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== origin.trim()) throw new Error('Invalid NOTIFICATION_REALTIME_ORIGINS');
   }
   return settings;
 }

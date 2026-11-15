@@ -10,7 +10,6 @@ export class NotificationSocketAuthService {
   private readonly keys?: ReturnType<typeof createRemoteJWKSet>;
 
   constructor(config: ConfigService) {
-    if (config.get('NOTIFICATION_REALTIME_ENABLED') !== true) return;
     this.issuer = config.getOrThrow<string>('KEYCLOAK_ISSUER_URL');
     this.audience = config.getOrThrow<string>('KEYCLOAK_AUDIENCE');
     for (const origin of config

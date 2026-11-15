@@ -2,7 +2,7 @@
 
 ## Cấu hình local
 
-1. Trong `.env` của notification service, bật Kafka với topic notification hiện có, đặt `NOTIFICATION_REALTIME_ENABLED=true`, `PUSH_ENABLED=true`. Core, Gateway và Kafka phải chạy; Core sở hữu audience và outbox.
+1. Trong `.env` của notification service, bật Kafka với topic notification hiện có và đặt `PUSH_ENABLED=true`. Realtime luôn bật. Core, Gateway và Kafka phải chạy; Core sở hữu audience và outbox.
 2. Giữ `KEYCLOAK_ISSUER_URL`, `KEYCLOAK_AUDIENCE`, `NOTIFICATION_REALTIME_ORIGINS`, `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` đã cấu hình. Không đưa khóa riêng vào Git.
 3. Khởi động lại notification service sau khi đổi `.env`; các cờ chỉ được đọc khi tiến trình khởi động. Kiểm tra dịch vụ vẫn đăng ký trong Eureka.
 4. Trong `hs-web-app`, điền cấu hình Firebase Web công khai và VAPID public key theo hướng dẫn của repo đó, sau đó khởi động lại web app. Trình duyệt phải hỗ trợ FCM và bạn phải cho phép thông báo bằng thao tác của mình. Localhost được trình duyệt coi là secure context.

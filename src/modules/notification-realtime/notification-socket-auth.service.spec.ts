@@ -31,7 +31,6 @@ describe('NotificationSocketAuthService', () => {
     issuer = `http://127.0.0.1:${address.port}/realms/test`;
     auth = new NotificationSocketAuthService(
       new ConfigService({
-        NOTIFICATION_REALTIME_ENABLED: true,
         KEYCLOAK_ISSUER_URL: issuer,
         KEYCLOAK_AUDIENCE: 'notifications',
         NOTIFICATION_REALTIME_ORIGINS: 'https://app.example',
@@ -93,16 +92,12 @@ describe('NotificationSocketAuthService', () => {
     }
   });
 
-  it('fails closed when disabled and rejects wildcard origin config', async () => {
-    const disabled = new NotificationSocketAuthService(new ConfigService({}));
-    await expect(
-      disabled.authenticate('https://app.example', await token()),
-    ).rejects.toThrow();
+  it('requires auth configuration and rejects wildcard origins', () => {
+    expect(() => new NotificationSocketAuthService(new ConfigService({}))).toThrow();
     expect(
       () =>
         new NotificationSocketAuthService(
           new ConfigService({
-            NOTIFICATION_REALTIME_ENABLED: true,
             KEYCLOAK_ISSUER_URL: issuer,
             KEYCLOAK_AUDIENCE: 'notifications',
             NOTIFICATION_REALTIME_ORIGINS: '*',

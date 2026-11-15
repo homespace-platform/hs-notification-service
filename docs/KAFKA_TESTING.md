@@ -15,6 +15,7 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | CONTRACT_AWAITING_SIGNATURE, CONTRACT_SIGNED, CONTRACT_EXPIRED | contractId                     | CONTRACT    |
 | PAYMENT_SUCCESSFUL, PAYMENT_FAILED, PAYMENT_OVERDUE            | paymentId                      | PAYMENT     |
 | CHAT_MESSAGE_RECEIVED                                          | conversationId                 | CHAT        |
+| CHAT_ALERT_REQUESTED                                           | conversationId, messageId (only keys), exactly one recipient | Socket only |
 | PLATFORM_ANNOUNCEMENT                                          | title (1..200), body (1..2000); admin form also requires priority and actionPath | SYSTEM |
 | NEWS_PUBLISHED                                                 | newsId, slug (only keys)       | NEWS        |
 | ACCOUNT_ROLE_CHANGED, ACCOUNT_DISABLED, ACCOUNT_ENABLED        | none: `data` must be exactly `{}` | ACCOUNT  |
@@ -30,6 +31,12 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | PAYMENT_OBLIGATION_OVERDUE | paymentId (only key), exactly one recipient | PAYMENT |
 
 Resource events use fixed templates. Booking `data.recipientSide` accepts only `OWNER` or `RENTER`: OWNER opens `/dashboard/viewing-schedules?appointmentId=<bookingId>`, RENTER opens `/dashboard/viewing-schedules/my-bookings?appointmentId=<bookingId>`. Booking events may also include `listingTitle` (plain text, 1–120 characters), `appointmentDate` (`YYYY-MM-DD`) and `startTime` (`HH:mm`) so the notification body identifies the listing and viewing time. `BOOKING_RESCHEDULE_REQUESTED` uses the proposed date/time; other booking events use the current date/time. Date and time appear together when both are present. The service constructs routes and content from these validated fields; producer URLs and other data fields are rejected. Legacy booking data containing only `bookingId` remains accepted and opens `/notifications`, as do other non-listing resource types. `bookingId` and the optional side remain in metadata. If a system event targets both sides, publish separate envelopes with the correct side and recipients. A cancellation event alone cannot determine which side receives it.
+
+## Chat alert
+
+`CHAT_ALERT_REQUESTED` uses the existing `homespace.notification.events.v1` topic and strict v1 envelope. Set `eventId` to `chat_<messageId>` and `recipients` to the one intended Keycloak user ID. `data` must be exactly `{conversationId,messageId}`; message text and other private fields are rejected. The consumer checks that recipient's `CHAT.push` preference (default on), then emits `chat:alert` with only `{eventId,conversationId,messageId}` to their authenticated socket room. It does not create a feed row, change global unread count, or enqueue Firebase/email delivery. Preference lookup and socket emission failures use bounded Kafka retries and leave the offset uncommitted when exhausted. An offline recipient has no socket replay; a crash after emission but before offset commit may duplicate the alert, so clients deduplicate by `eventId` and refresh chat state from the chat API.
+
+Deploy every notification consumer replica before enabling or restarting the Chat producer; older strict consumers quarantine this event in the DLT and commit its source offset.
 
 ## Listing events
 

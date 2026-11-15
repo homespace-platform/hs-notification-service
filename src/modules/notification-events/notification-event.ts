@@ -444,6 +444,7 @@ export interface NotificationEvent {
     | keyof typeof terminationTemplates
     | keyof typeof returnSettlementTemplates
     | 'NEWS_PUBLISHED'
+    | 'CHAT_ALERT_REQUESTED'
     | 'PLATFORM_ANNOUNCEMENT';
   version: 1;
   occurredAt: string;
@@ -499,6 +500,7 @@ export function parseNotificationEvent(
         isTerminationType(input.eventType) ||
         isReturnSettlementType(input.eventType) ||
         input.eventType === 'NEWS_PUBLISHED' ||
+        input.eventType === 'CHAT_ALERT_REQUESTED' ||
         input.eventType === 'PLATFORM_ANNOUNCEMENT'
       ) ||
       typeof input.occurredAt !== 'string' ||
@@ -515,7 +517,15 @@ export function parseNotificationEvent(
       throw new InvalidNotificationEvent();
     }
     const event = input as unknown as NotificationEvent;
-    if (event.eventType === 'NEWS_PUBLISHED') {
+    if (event.eventType === 'CHAT_ALERT_REQUESTED') {
+      if (
+        event.recipients.length !== 1 ||
+        Object.keys(event.data).sort().join(',') !== 'conversationId,messageId' ||
+        !identifier(event.data.conversationId) ||
+        !identifier(event.data.messageId) ||
+        event.eventId !== `chat_${event.data.messageId}`
+      ) throw new InvalidNotificationEvent();
+    } else if (event.eventType === 'NEWS_PUBLISHED') {
       if (
         Object.keys(event.data).sort().join(',') !== 'newsId,slug' ||
         !identifier(event.data.newsId) ||
@@ -618,6 +628,7 @@ export function renderNotification(
   event: NotificationEvent,
   recipientId: string,
 ): NewNotification {
+  if (event.eventType === 'CHAT_ALERT_REQUESTED') throw new InvalidNotificationEvent();
   const common = {
     recipientId,
     sourceEventId: event.eventId,

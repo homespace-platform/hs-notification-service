@@ -114,9 +114,19 @@ export class NotificationEventsConsumer
       if (this.stopping) throw new Error('Kafka consumer stopping');
       try {
         const event = parseNotificationEvent(message.value);
-        for (const recipient of event.recipients) {
-          await this.notifications.create(renderNotification(event, recipient));
+        if (event.eventType === 'CHAT_ALERT_REQUESTED') {
+          await this.notifications.alertChat(
+            event.recipients[0],
+            event.eventId,
+            event.data.conversationId,
+            event.data.messageId,
+          );
           await heartbeat();
+        } else {
+          for (const recipient of event.recipients) {
+            await this.notifications.create(renderNotification(event, recipient));
+            await heartbeat();
+          }
         }
         failure = undefined;
         break;

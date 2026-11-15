@@ -5,16 +5,18 @@ the Engine.IO path is `/socket.io`, and only the `websocket` transport is enable
 REST stays behind the trusted Gateway; websocket authentication verifies the access
 token directly using Keycloak JWKS and never trusts gateway headers or a client user ID.
 
-Required configuration when `NOTIFICATION_REALTIME_ENABLED=true`:
+Required configuration (realtime is always enabled):
 
 - `KEYCLOAK_ISSUER_URL`: exact realm issuer, e.g. `https://identity.example/realms/homespace`.
 - `KEYCLOAK_AUDIENCE`: audience configured in Keycloak access tokens for this service.
 - `NOTIFICATION_REALTIME_ORIGINS`: comma-separated exact browser origins, e.g. `https://app.example,http://localhost:3000`. No wildcard, paths, or trailing slash.
 
-Disabled by default; disabled connections fail closed. Enabled clients must send a
+Clients must send a
 Keycloak RS256 access token (`typ=Bearer`) with `sub`, `iat`, `exp`, the expected
 issuer and audience. ID tokens are rejected. TLS is required outside local development.
 No token, recipient ID, or notification content is logged by realtime authentication.
+
+For chat alerts, configure the issuer, audience and allowed origins above. Set the web client's `NEXT_PUBLIC_NOTIFICATION_SOCKET_URL` to a reachable notification-service origin so it can connect to the `/notifications` namespace; the Gateway has no WebSocket route. `chat:alert` reaches only the verified recipient's room and contains `{eventId,conversationId,messageId}`. It is ephemeral and may be duplicated after Kafka replay, so clients deduplicate by `eventId` and fetch chat state after reconnect.
 
 ## CLI smoke check
 

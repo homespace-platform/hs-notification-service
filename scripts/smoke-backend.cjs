@@ -21,7 +21,10 @@ async function main() {
   const config = {
     MONGODB_URI: process.env.MONGODB_URI,
     GATEWAY_INTERNAL_SECRET: secret,
-    PUSH_ENABLED: false, NOTIFICATION_REALTIME_ENABLED: false,
+    PUSH_ENABLED: false,
+    KEYCLOAK_ISSUER_URL: 'http://localhost:9000/realms/homespace-platform',
+    KEYCLOAK_AUDIENCE: 'notifications',
+    NOTIFICATION_REALTIME_ORIGINS: 'http://localhost:3000',
     KAFKA_ENABLED: true, KAFKA_BROKERS: process.env.KAFKA_BROKERS || 'localhost:9092',
     KAFKA_CLIENT_ID: `test-${suffix}`, KAFKA_GROUP_ID: `test-${suffix}`,
     KAFKA_EVENTS_TOPIC: topic, KAFKA_DLT_TOPIC: dlt,

@@ -33,6 +33,15 @@ export class NotificationRealtimeService {
     this.emit(recipientId, 'notification:unread-count', { count });
   }
 
+  emitChatAlert(
+    recipientId: string,
+    eventId: string,
+    conversationId: string,
+    messageId: string,
+  ): void {
+    this.emit(recipientId, 'chat:alert', { eventId, conversationId, messageId });
+  }
+
   private emit(recipientId: string, event: string, payload: unknown): void {
     // shortcut: rooms are local to one instance; add a shared adapter before scaling replicas.
     this.server?.to(`user:${recipientId}`).emit(event, payload);
