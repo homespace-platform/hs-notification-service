@@ -19,6 +19,7 @@ import {
   NOTIFICATION_PRIORITIES,
   type NewNotification,
   type NotificationCategory,
+  type NotificationChannel,
   type NotificationRecord,
   type PreferenceItem,
 } from '../domain/notification.model';
@@ -66,8 +67,8 @@ export class NotificationService {
 
   /**
    * Internal ingestion entry point for later event consumers (no HTTP route).
-   * Idempotent per (recipientId, sourceEventId). Delivery preferences are
-   * deliberately NOT consulted: in-app notifications are always stored.
+   * Idempotent per (recipientId, sourceEventId). Delivery preferences never
+   * prevent in-app storage; push controls realtime popups and browser push.
    */
   async create(
     input: NewNotification,
@@ -82,8 +83,17 @@ export class NotificationService {
       this.logger.warn('Push enqueue deferred to durable recovery');
     }
     if (created && this.realtime) {
+      let popupAllowed = false;
       try {
-        this.realtime.emitNew(record.recipientId, notification);
+        const items = await this.preferences.find(record.recipientId);
+        popupAllowed =
+          items?.find((item) => item.category === record.category)?.push ??
+          true;
+      } catch {
+        this.logger.warn('Realtime popup suppressed: preferences unavailable');
+      }
+      try {
+        this.realtime.emitNew(record.recipientId, notification, popupAllowed);
         this.realtime.emitUnreadCount(
           record.recipientId,
           await this.notifications.countUnread(record.recipientId),
@@ -169,6 +179,23 @@ export class NotificationService {
     const normalized = this.withDefaults(items);
     await this.preferences.save(userId, normalized, new Date());
     return normalized;
+  }
+
+  async patchPreference(
+    userId: string,
+    category: NotificationCategory,
+    channel: NotificationChannel,
+    enabled: boolean,
+  ): Promise<PreferenceItem[]> {
+    return this.withDefaults(
+      await this.preferences.patch(
+        userId,
+        category,
+        channel,
+        enabled,
+        new Date(),
+      ),
+    );
   }
 
   /** Categories not configured fall back to enabled for every channel. */

@@ -1,6 +1,8 @@
 import type {
   FeedQuery,
   NewNotification,
+  NotificationCategory,
+  NotificationChannel,
   NotificationRecord,
   PreferenceItem,
 } from './notification.model';
@@ -39,6 +41,13 @@ export abstract class NotificationRepository {
 
 export abstract class NotificationPreferenceRepository {
   abstract find(userId: string): Promise<PreferenceItem[] | null>;
+  abstract patch(
+    userId: string,
+    category: NotificationCategory,
+    channel: NotificationChannel,
+    enabled: boolean,
+    now: Date,
+  ): Promise<PreferenceItem[]>;
   abstract save(
     userId: string,
     items: PreferenceItem[],

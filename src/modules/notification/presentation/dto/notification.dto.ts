@@ -15,7 +15,9 @@ import {
 import {
   FEED_MAX_LIMIT,
   NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CHANNELS,
   type NotificationCategory,
+  type NotificationChannel,
 } from '../../domain/notification.model';
 
 export class FeedQueryDto {
@@ -60,4 +62,15 @@ export class UpdatePreferencesDto {
   @ValidateNested({ each: true })
   @Type(() => PreferenceItemDto)
   items: PreferenceItemDto[];
+}
+
+export class PatchPreferenceDto {
+  @IsIn(NOTIFICATION_CATEGORIES)
+  category: NotificationCategory;
+
+  @IsIn(NOTIFICATION_CHANNELS)
+  channel: NotificationChannel;
+
+  @IsBoolean()
+  enabled: boolean;
 }

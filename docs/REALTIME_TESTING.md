@@ -47,6 +47,11 @@ for (const event of [
 1. Open two clients with account A's token and one with account B's token.
 2. Deliver a persisted notification for A through the configured event ingestion
    boundary. Both A clients receive `notification:new`; B receives nothing.
+   Its payload is the notification view plus server-calculated `popupAllowed`.
+   Category `push: false` suppresses popups for every priority, including `URGENT`;
+   clients still process the event for feed/domain refreshes. Email preferences
+   do not control popups. Missing preferences default to allowed; lookup failure
+   suppresses popups while preserving the event, stored feed and unread count.
 3. Read/delete through authenticated Gateway REST. Both A tabs receive matching
    events and unread counts. Cross-user IDs return 404 and emit nothing.
 4. `notification:read` carries a notification view, or `{ all: true }` after read-all;

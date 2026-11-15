@@ -23,6 +23,10 @@ import {
   NotificationPreferenceDocument,
   NotificationPreferenceSchema,
 } from '../notification/infrastructure/notification-preference.schema';
+import {
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_PRIORITIES,
+} from '../notification/domain/notification.model';
 
 describe('push contract', () => {
   it('requires explicit boolean enablement', () => {
@@ -55,6 +59,75 @@ describe('push contract', () => {
       60000, 120000, 240000, 480000, 3600000,
     ]);
   });
+
+  it.each(NOTIFICATION_CATEGORIES)(
+    'skips disabled %s push at dispatch for every priority',
+    async (category) => {
+      for (const priority of NOTIFICATION_PRIORITIES) {
+        const job = {
+          notificationId: 'notification-1',
+          recipientId: 'alice',
+          installationId: 'installation-1',
+          generation: 'generation-1',
+          attempts: 1,
+        } as Delivery;
+        const lease = jest
+          .fn<() => Promise<Delivery | null>>()
+          .mockResolvedValueOnce(job)
+          .mockResolvedValue(null);
+        const updateOne = jest.fn(() => ({ exec: async () => undefined }));
+        const devices = {
+          findOne: jest.fn(() => ({
+            lean: () => ({ exec: async () => ({ fid: 'unused' }) }),
+          })),
+        };
+        const deliveries = {
+          findOneAndUpdate: () => ({ lean: () => ({ exec: lease }) }),
+          updateOne,
+          updateMany: () => ({ exec: async () => undefined }),
+        };
+        const notifications = {
+          collection: {
+            find: () => ({
+              sort: () => ({ limit: () => ({ toArray: async () => [] }) }),
+            }),
+          },
+          findOne: () => ({
+            lean: () => ({ exec: async () => ({ category, priority }) }),
+          }),
+        };
+        const preferences = {
+          findOne: jest.fn(() => ({
+            lean: () => ({
+              exec: async () => ({
+                items: [{ category, push: false, email: true }],
+              }),
+            }),
+          })),
+        };
+        const push = { enabled: true, send: jest.fn() };
+        const service = new NotificationDeliveryService(
+          devices as unknown as Model<Device>,
+          deliveries as unknown as Model<Delivery>,
+          notifications as unknown as Model<NotificationDocument>,
+          preferences as unknown as Model<NotificationPreferenceDocument>,
+          push as unknown as FirebasePushProvider,
+        );
+
+        await service.tick();
+
+        expect(preferences.findOne).toHaveBeenCalledWith({ userId: 'alice' });
+        expect(updateOne).toHaveBeenCalledWith(
+          expect.objectContaining({
+            notificationId: job.notificationId,
+            installationId: job.installationId,
+          }),
+          { $set: { status: 'skipped' } },
+        );
+        expect(push.send).not.toHaveBeenCalled();
+      }
+    },
+  );
 });
 
 // Explicit opt-in test database; no application credentials or .env are read.

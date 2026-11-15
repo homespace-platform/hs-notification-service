@@ -1,12 +1,20 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import type { PreferenceItem } from '../domain/notification.model';
+import {
+  NOTIFICATION_CATEGORIES,
+  type NotificationCategory,
+  type NotificationChannel,
+  type PreferenceItem,
+} from '../domain/notification.model';
 import { NotificationPreferenceRepository } from '../domain/notification.repository';
 import { NotificationPreferenceDocument } from './notification-preference.schema';
 
 @Injectable()
-export class MongoNotificationPreferenceRepository extends NotificationPreferenceRepository implements OnModuleInit {
+export class MongoNotificationPreferenceRepository
+  extends NotificationPreferenceRepository
+  implements OnModuleInit
+{
   constructor(
     @InjectModel(NotificationPreferenceDocument.name)
     private readonly model: Model<NotificationPreferenceDocument>,
@@ -43,5 +51,71 @@ export class MongoNotificationPreferenceRepository extends NotificationPreferenc
         { upsert: true },
       )
       .exec();
+  }
+
+  async patch(
+    userId: string,
+    category: NotificationCategory,
+    channel: NotificationChannel,
+    enabled: boolean,
+    now: Date,
+  ): Promise<PreferenceItem[]> {
+    const pipeline = [
+      {
+        $set: {
+          userId: { $literal: userId },
+          updatedAt: now,
+          items: {
+            $map: {
+              input: NOTIFICATION_CATEGORIES,
+              as: 'category',
+              in: {
+                $mergeObjects: [
+                  { category: '$$category', push: true, email: true },
+                  {
+                    $arrayElemAt: [
+                      {
+                        $filter: {
+                          input: { $ifNull: ['$items', []] },
+                          as: 'item',
+                          cond: { $eq: ['$$item.category', '$$category'] },
+                        },
+                      },
+                      0,
+                    ],
+                  },
+                  {
+                    $cond: [
+                      { $eq: ['$$category', category] },
+                      { [channel]: enabled },
+                      {},
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ];
+    const update = (upsert: boolean) =>
+      this.model
+        .findOneAndUpdate({ userId }, pipeline, {
+          upsert,
+          returnDocument: 'after',
+          updatePipeline: true,
+        })
+        .lean<NotificationPreferenceDocument>()
+        .exec();
+    let doc: NotificationPreferenceDocument | null;
+    try {
+      doc = await update(true);
+    } catch (error) {
+      if ((error as { code?: number }).code !== 11000) throw error;
+      // Concurrent first updates can race on the unique userId index.
+      doc = await update(false);
+    }
+    if (!doc) throw new Error('Preference update unavailable');
+    return doc.items;
   }
 }

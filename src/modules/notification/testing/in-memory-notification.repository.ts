@@ -5,6 +5,8 @@ import {
 import type {
   FeedQuery,
   NewNotification,
+  NotificationCategory,
+  NotificationChannel,
   NotificationRecord,
   PreferenceItem,
 } from '../domain/notification.model';
@@ -118,6 +120,23 @@ export class InMemoryPreferenceRepository extends NotificationPreferenceReposito
 
   async find(userId: string): Promise<PreferenceItem[] | null> {
     return this.store.get(userId)?.map((item) => ({ ...item })) ?? null;
+  }
+
+  async patch(
+    userId: string,
+    category: NotificationCategory,
+    channel: NotificationChannel,
+    enabled: boolean,
+  ): Promise<PreferenceItem[]> {
+    const items = this.store.get(userId) ?? [];
+    let item = items.find((entry) => entry.category === category);
+    if (!item) {
+      item = { category, push: true, email: true };
+      items.push(item);
+    }
+    item[channel] = enabled;
+    this.store.set(userId, items);
+    return items.map((entry) => ({ ...entry }));
   }
 
   async save(userId: string, items: PreferenceItem[]): Promise<void> {

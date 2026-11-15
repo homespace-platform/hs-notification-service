@@ -120,7 +120,7 @@ describe('listing notification acceptance', () => {
       expect(replay.notification.id).toBe(first.notification.id);
       expect(first.notification).not.toHaveProperty('recipientId');
       expect(first.notification).not.toHaveProperty('sourceEventId');
-      expect(emitNew).toHaveBeenLastCalledWith('owner', first.notification);
+      expect(emitNew).toHaveBeenLastCalledWith('owner', first.notification, true);
     }
     expect(rows.rows).toHaveLength(cases.length);
     expect(emitNew).toHaveBeenCalledTimes(cases.length);

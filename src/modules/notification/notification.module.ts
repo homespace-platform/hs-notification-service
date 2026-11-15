@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthenticationModule } from '../authentication/authentication.module';
 import { NotificationService } from './application/notification.service';
-import { AdminBroadcastService } from './application/admin-broadcast.service';
 import {
   NotificationPreferenceRepository,
   NotificationRepository,
@@ -18,7 +17,6 @@ import {
   NotificationSchema,
 } from './infrastructure/notification.schema';
 import { NotificationController } from './presentation/notification.controller';
-import { AdminBroadcastController } from './presentation/admin-broadcast.controller';
 import { NotificationDeliveryModule } from '../notification-delivery/notification-delivery.module';
 import { NotificationRealtimeModule } from '../notification-realtime/notification-realtime.module';
 
@@ -35,10 +33,9 @@ import { NotificationRealtimeModule } from '../notification-realtime/notificatio
       },
     ]),
   ],
-  controllers: [NotificationController, AdminBroadcastController],
+  controllers: [NotificationController],
   providers: [
     NotificationService,
-    AdminBroadcastService,
     { provide: NotificationRepository, useClass: MongoNotificationRepository },
     {
       provide: NotificationPreferenceRepository,

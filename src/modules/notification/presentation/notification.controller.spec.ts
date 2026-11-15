@@ -7,6 +7,7 @@ import { GlobalExceptionFilter } from '../../../common/filters/global-exception.
 import { GatewayAuthenticationGuard } from '../../authentication/presentation/guards/gateway-authentication.guard';
 import { HealthController } from '../../health/presentation/health.controller';
 import { NotificationService } from '../application/notification.service';
+import { NOTIFICATION_CATEGORIES } from '../domain/notification.model';
 import {
   NotificationPreferenceRepository,
   NotificationRepository,
@@ -97,6 +98,7 @@ describe('NotificationController (HTTP)', () => {
       ['patch', '/read-all'],
       ['get', '/preferences'],
       ['put', '/preferences'],
+      ['patch', '/preferences'],
       ['patch', `/${'a'.repeat(24)}/read`],
       ['delete', `/${'a'.repeat(24)}`],
     ];
@@ -325,6 +327,87 @@ describe('NotificationController (HTTP)', () => {
       const feed = await http().get('/feed').set(as(ALICE)).expect(200);
       expect(feed.body.result.items).toHaveLength(1);
     });
+
+    it('PATCH /preferences preserves other categories/channels and returns normalized owner preferences', async () => {
+      const news = await http()
+        .patch('/preferences')
+        .set(as(ALICE))
+        .send({ category: 'NEWS', channel: 'push', enabled: false })
+        .expect(200);
+      expect(news.body.result.items).toHaveLength(
+        NOTIFICATION_CATEGORIES.length,
+      );
+      expect(
+        news.body.result.items.find(
+          (item: { category: string }) => item.category === 'NEWS',
+        ),
+      ).toEqual({ category: 'NEWS', push: false, email: true });
+
+      await Promise.all([
+        http()
+          .patch('/preferences')
+          .set(as(ALICE))
+          .send({ category: 'PAYMENT', channel: 'push', enabled: false })
+          .expect(200),
+        http()
+          .patch('/preferences')
+          .set(as(ALICE))
+          .send({ category: 'NEWS', channel: 'email', enabled: false })
+          .expect(200),
+      ]);
+      const alice = await http().get('/preferences').set(as(ALICE)).expect(200);
+      expect(alice.body.result.items).toEqual(
+        expect.arrayContaining([
+          { category: 'NEWS', push: false, email: false },
+          { category: 'PAYMENT', push: false, email: true },
+        ]),
+      );
+      const bob = await http().get('/preferences').set(as(BOB)).expect(200);
+      expect(
+        bob.body.result.items.every(
+          (item: { push: boolean; email: boolean }) => item.push && item.email,
+        ),
+      ).toBe(true);
+
+      const put = await http()
+        .put('/preferences')
+        .set(as(ALICE))
+        .send({ items: [{ category: 'CHAT', push: false, email: false }] })
+        .expect(200);
+      expect(
+        put.body.result.items.find(
+          (item: { category: string }) => item.category === 'NEWS',
+        ),
+      ).toEqual({ category: 'NEWS', push: true, email: true });
+    });
+
+    it.each([
+      {},
+      { channel: 'push', enabled: false },
+      { category: 'NEWS', enabled: false },
+      { category: 'NEWS', channel: 'push' },
+      { category: 'UNKNOWN', channel: 'push', enabled: false },
+      { category: 'NEWS', channel: 'sms', enabled: false },
+      { category: 'NEWS', channel: 'push', enabled: 'false' },
+      { category: 'NEWS', channel: 'push', enabled: null },
+      { category: 'NEWS', channel: 'push', enabled: false, userId: BOB },
+      { category: 'NEWS', channel: 'push', enabled: false, extra: true },
+      { items: [{ category: 'NEWS', push: false, email: false }] },
+    ])(
+      'PATCH /preferences rejects invalid input without changing preferences: %j',
+      async (body) => {
+        await http()
+          .patch('/preferences')
+          .set(as(ALICE))
+          .send(body)
+          .expect(400);
+        expect(
+          (await service.getPreferences(ALICE)).every(
+            (item) => item.push && item.email,
+          ),
+        ).toBe(true);
+      },
+    );
 
     it('does not expose any public create/test-send endpoint', async () => {
       await http().post('/feed').set(as(ALICE)).send({}).expect(404);

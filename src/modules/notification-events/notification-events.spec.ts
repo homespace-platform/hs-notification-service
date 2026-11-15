@@ -68,6 +68,54 @@ describe('notification event contract', () => {
   });
 });
 
+describe('platform announcement contract', () => {
+  const announcement = {
+    ...event,
+    eventType: 'PLATFORM_ANNOUNCEMENT',
+    data: { title: 'Maintenance', body: 'HomeSpace maintenance tonight.' },
+  };
+  const adminData = { ...announcement.data, priority: 'URGENT', actionPath: '/news/maintenance' };
+
+  it('keeps legacy announcements valid with default priority and feed route', () => {
+    expect(renderNotification(parseNotificationEvent(encode(announcement)), 'alice')).toMatchObject({
+      category: 'SYSTEM', type: 'PLATFORM_ANNOUNCEMENT', priority: 'NORMAL',
+      title: announcement.data.title, body: announcement.data.body, actionPath: '/notifications',
+    });
+    expect(() => parseNotificationEvent(encode({ ...announcement,
+      data: { ...announcement.data, body: 'Legacy\nmultiline' },
+    }))).toThrow('Invalid notification event');
+  });
+
+  it.each(['NORMAL', 'HIGH', 'URGENT'])('preserves admin %s priority, safe route and multiline body', (priority) => {
+    const data = { ...adminData, priority, body: 'First line\r\nSecond line\tDetails' };
+    expect(renderNotification(parseNotificationEvent(encode({ ...announcement, data })), 'alice'))
+      .toMatchObject({ category: 'SYSTEM', priority, actionPath: data.actionPath, body: data.body });
+  });
+
+  it.each([
+    { ...adminData, priority: 'LOW' },
+    { ...adminData, priority: null },
+    { ...adminData, actionPath: 'https://evil.example' },
+    { ...adminData, actionPath: '//evil.example' },
+    { ...adminData, actionPath: '/safe/../admin' },
+    { ...adminData, actionPath: '/unsafe\\path' },
+    { ...adminData, actionPath: `/${'a'.repeat(500)}` },
+    { ...adminData, actionPath: null },
+    { ...adminData, title: 'Unsafe\ntitle' },
+    { ...adminData, body: '<script>' },
+    { ...adminData, body: 'Unsafe\u0000body' },
+    { ...adminData, body: 'Unsafe\u000bbody' },
+    { ...adminData, body: ' \r\n\t ' },
+    { ...adminData, body: 'x'.repeat(2001) },
+    { ...adminData, extra: 'ignored' },
+    { ...announcement.data, priority: 'URGENT' },
+    { ...announcement.data, actionPath: '/notifications' },
+  ])('rejects unsafe or incomplete admin announcement data %j', (data) => {
+    expect(() => parseNotificationEvent(encode({ ...announcement, data })))
+      .toThrow('Invalid notification event');
+  });
+});
+
 describe('booking notification contract', () => {
   const bookingId = '2f89a556-7a9b-4865-aa9f-924531995bd2';
   const types = [

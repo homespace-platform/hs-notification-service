@@ -1,7 +1,9 @@
 import type {
   NewNotification,
   NotificationCategory,
+  NotificationPriority,
 } from '../notification/domain/notification.model';
+import { isSafeActionPath } from '../notification/domain/notification-content';
 
 // Neutral copy: every type can reach either side; producer sends no reason/date/amount.
 const rental = (title: string, body: string) =>
@@ -441,6 +443,7 @@ export interface NotificationEvent {
     | keyof typeof renewalTemplates
     | keyof typeof terminationTemplates
     | keyof typeof returnSettlementTemplates
+    | 'NEWS_PUBLISHED'
     | 'PLATFORM_ANNOUNCEMENT';
   version: 1;
   occurredAt: string;
@@ -495,6 +498,7 @@ export function parseNotificationEvent(
         isRenewalType(input.eventType) ||
         isTerminationType(input.eventType) ||
         isReturnSettlementType(input.eventType) ||
+        input.eventType === 'NEWS_PUBLISHED' ||
         input.eventType === 'PLATFORM_ANNOUNCEMENT'
       ) ||
       typeof input.occurredAt !== 'string' ||
@@ -511,7 +515,16 @@ export function parseNotificationEvent(
       throw new InvalidNotificationEvent();
     }
     const event = input as unknown as NotificationEvent;
-    if (isAccountType(event.eventType)) {
+    if (event.eventType === 'NEWS_PUBLISHED') {
+      if (
+        Object.keys(event.data).sort().join(',') !== 'newsId,slug' ||
+        !identifier(event.data.newsId) ||
+        event.eventId !== `news_${event.data.newsId}` ||
+        typeof event.data.slug !== 'string' ||
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.data.slug) ||
+        event.data.slug.length > 255
+      ) throw new InvalidNotificationEvent();
+    } else if (isAccountType(event.eventType)) {
       // Exactly one affected account and no producer data (no role, reason, actor or identity).
       if (event.recipients.length !== 1 || Object.keys(event.data).length !== 0)
         throw new InvalidNotificationEvent();
@@ -547,10 +560,22 @@ export function parseNotificationEvent(
       if (event.recipients.length !== 1 || Object.keys(event.data).join(',') !== 'contractId' || !identifier(event.data.contractId))
         throw new InvalidNotificationEvent();
     } else if (event.eventType === 'PLATFORM_ANNOUNCEMENT') {
+      const keys = Object.keys(event.data).sort().join(',');
+      const legacy = keys === 'body,title';
+      const validBody = legacy
+        ? plainText(event.data.body, 2000)
+        : typeof event.data.body === 'string' &&
+          event.data.body.trim().length > 0 &&
+          event.data.body.length <= 2000 &&
+          // eslint-disable-next-line no-control-regex -- Preserve admin multiline text, rejecting other control characters.
+          !/[<>\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(event.data.body);
       if (
-        Object.keys(event.data).sort().join(',') !== 'body,title' ||
+        (!legacy && keys !== 'actionPath,body,priority,title') ||
         !plainText(event.data.title, 200) ||
-        !plainText(event.data.body, 2000)
+        !validBody ||
+        (!legacy &&
+          (!['NORMAL', 'HIGH', 'URGENT'].includes(event.data.priority) ||
+            !isSafeActionPath(event.data.actionPath)))
       )
         throw new InvalidNotificationEvent();
     } else {
@@ -599,12 +624,24 @@ export function renderNotification(
     type: event.eventType,
     priority: 'NORMAL' as const,
   };
+  if (event.eventType === 'NEWS_PUBLISHED') {
+    return {
+      ...common,
+      category: 'NEWS',
+      title: 'Tin tức mới',
+      body: 'Có tin tức mới trên HomeSpace. Vui lòng mở để xem chi tiết.',
+      actionPath: `/news/${encodeURIComponent(event.data.slug)}`,
+      metadata: { newsId: event.data.newsId },
+    };
+  }
   if (event.eventType === 'PLATFORM_ANNOUNCEMENT') {
     return {
       ...common,
       category: 'SYSTEM',
       title: event.data.title,
       body: event.data.body,
+      priority: (event.data.priority ?? 'NORMAL') as NotificationPriority,
+      actionPath: event.data.actionPath ?? '/notifications',
     };
   }
   if (isAccountType(event.eventType)) {

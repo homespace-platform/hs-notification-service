@@ -20,7 +20,11 @@ import {
   type NotificationView,
 } from '../application/notification.service';
 import type { PreferenceItem } from '../domain/notification.model';
-import { FeedQueryDto, UpdatePreferencesDto } from './dto/notification.dto';
+import {
+  FeedQueryDto,
+  PatchPreferenceDto,
+  UpdatePreferencesDto,
+} from './dto/notification.dto';
 import { NotificationIdPipe } from './notification-id.pipe';
 import { NotificationRealtimeService } from '../../notification-realtime/notification-realtime.service';
 
@@ -85,6 +89,23 @@ export class NotificationController {
     return new ApiResponseDto({
       result: {
         items: await this.service.updatePreferences(user.userId, body.items),
+      },
+    });
+  }
+
+  @Patch('preferences')
+  async patchPreference(
+    @CurrentUser() user: UserContext,
+    @Body() body: PatchPreferenceDto,
+  ): Promise<ApiResponseDto<{ items: PreferenceItem[] }>> {
+    return new ApiResponseDto({
+      result: {
+        items: await this.service.patchPreference(
+          user.userId,
+          body.category,
+          body.channel,
+          body.enabled,
+        ),
       },
     });
   }

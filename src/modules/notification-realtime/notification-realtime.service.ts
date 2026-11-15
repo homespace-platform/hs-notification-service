@@ -10,8 +10,12 @@ export class NotificationRealtimeService {
     this.server = server;
   }
 
-  emitNew(recipientId: string, notification: NotificationView): void {
-    this.emit(recipientId, 'notification:new', notification);
+  emitNew(
+    recipientId: string,
+    notification: NotificationView,
+    popupAllowed = true,
+  ): void {
+    this.emit(recipientId, 'notification:new', { ...notification, popupAllowed });
   }
 
   emitRead(

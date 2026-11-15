@@ -92,12 +92,5 @@ export function validateEnvironment(config: Record<string, unknown>) {
       if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== origin.trim()) throw new Error('Invalid NOTIFICATION_REALTIME_ORIGINS');
     }
   }
-  if (config.USER_DIRECTORY_URL) {
-    const directory = new URL(required('USER_DIRECTORY_URL'));
-    if (!['http:', 'https:'].includes(directory.protocol) || directory.username || directory.password || directory.search || directory.hash || !directory.pathname.endsWith('/api/v1/admin/users')) {
-      throw new Error('Invalid USER_DIRECTORY_URL');
-    }
-    settings.USER_DIRECTORY_URL = directory.toString();
-  }
   return settings;
 }

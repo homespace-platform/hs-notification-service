@@ -90,7 +90,7 @@ describe('rental request notification acceptance', () => {
       const first = await service.create(renderNotification(event, 'owner'));
       expect((await service.create(renderNotification(event, 'owner'))).notification.id).toBe(first.notification.id);
       expect(first.notification).not.toHaveProperty('recipientId'); expect(first.notification).not.toHaveProperty('sourceEventId');
-      expect(emitNew).toHaveBeenLastCalledWith('owner', first.notification);
+      expect(emitNew).toHaveBeenLastCalledWith('owner', first.notification, true);
     }
     expect(emitNew).toHaveBeenCalledTimes(26);
     expect((await service.getFeed('owner', { category: 'RENTAL_REQUEST', limit: 50 })).items).toHaveLength(26);

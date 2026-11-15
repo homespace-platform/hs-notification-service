@@ -17,7 +17,7 @@ export class PreferenceEntry {
 }
 const PreferenceEntrySchema = SchemaFactory.createForClass(PreferenceEntry);
 
-/** External delivery preferences only. They never gate in-app storage. */
+/** Delivery/popup preferences never gate in-app storage or unread counts. */
 @Schema({ collection: 'notification_preferences', versionKey: false })
 export class NotificationPreferenceDocument {
   @Prop({ type: String, required: true, unique: true })

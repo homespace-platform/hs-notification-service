@@ -1,6 +1,10 @@
 import { ErrorCode } from '../../../common/constants/error-code.constant';
 import { decodeCursor, encodeCursor } from '../domain/feed-cursor';
-import type { NewNotification } from '../domain/notification.model';
+import {
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CHANNELS,
+  type NewNotification,
+} from '../domain/notification.model';
 import {
   InMemoryNotificationRepository,
   InMemoryPreferenceRepository,
@@ -394,6 +398,77 @@ describe('NotificationService', () => {
   });
 
   describe('preferences', () => {
+    it('patches one channel with defaults while isolating users', async () => {
+      const { service } = setup();
+      const items = await service.patchPreference(ALICE, 'NEWS', 'push', false);
+      expect(items).toHaveLength(NOTIFICATION_CATEGORIES.length);
+      expect(items.find((item) => item.category === 'NEWS')).toEqual({
+        category: 'NEWS',
+        push: false,
+        email: true,
+      });
+      expect(
+        items
+          .filter((item) => item.category !== 'NEWS')
+          .every((item) => item.push && item.email),
+      ).toBe(true);
+      expect(
+        (await service.getPreferences(BOB)).every(
+          (item) => item.push && item.email,
+        ),
+      ).toBe(true);
+    });
+
+    it('preserves concurrent category/channel toggles from stale preference snapshots', async () => {
+      const { service } = setup();
+      const stale = await service.getPreferences(ALICE);
+      await Promise.all(
+        NOTIFICATION_CATEGORIES.flatMap((category) =>
+          NOTIFICATION_CHANNELS.map((channel) =>
+            service.patchPreference(ALICE, category, channel, false),
+          ),
+        ),
+      );
+
+      expect(stale.every((item) => item.push && item.email)).toBe(true);
+      expect(await service.getPreferences(ALICE)).toEqual(
+        NOTIFICATION_CATEGORIES.map((category) => ({
+          category,
+          push: false,
+          email: false,
+        })),
+      );
+    });
+
+    it('patches without reading and replacing an entire preference snapshot', async () => {
+      const { service, preferences } = setup();
+      await service.updatePreferences(ALICE, [
+        { category: 'NEWS', push: false, email: false },
+      ]);
+      preferences.find = async () => {
+        throw new Error('snapshot reads unavailable');
+      };
+      preferences.save = async () => {
+        throw new Error('snapshot writes unavailable');
+      };
+      const items = await service.patchPreference(
+        ALICE,
+        'PAYMENT',
+        'push',
+        false,
+      );
+      expect(items.find((item) => item.category === 'NEWS')).toEqual({
+        category: 'NEWS',
+        push: false,
+        email: false,
+      });
+      expect(items.find((item) => item.category === 'PAYMENT')).toEqual({
+        category: 'PAYMENT',
+        push: false,
+        email: true,
+      });
+    });
+
     it('defaults every category to enabled', async () => {
       const { service } = setup();
       const items = await service.getPreferences(ALICE);

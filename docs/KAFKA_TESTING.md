@@ -1,8 +1,8 @@
 # Kafka notification ingestion v1
 
-Enable `KAFKA_ENABLED=true` only with all Kafka environment values supplied: `KAFKA_BROKERS` (comma separated hosts), `KAFKA_CLIENT_ID`, `KAFKA_GROUP_ID`, `KAFKA_EVENTS_TOPIC`, `KAFKA_DLT_TOPIC`, `KAFKA_RETRY_ATTEMPTS` (integer 1..10), `KAFKA_RETRY_DELAY_MS` (integer 0..10000). Use different source/DLT topics. Provision topics before startup; auto creation is disabled. Restrict source produce permissions to trusted business services and test operators. The consumer trusts producer recipient selection; never expose a public HTTP notification creation endpoint.
+Enable `KAFKA_ENABLED=true` only with all Kafka environment values supplied: `KAFKA_BROKERS` (comma separated hosts), `KAFKA_CLIENT_ID`, `KAFKA_GROUP_ID`, `KAFKA_EVENTS_TOPIC`, `KAFKA_DLT_TOPIC`, `KAFKA_RETRY_ATTEMPTS` (integer 1..10), `KAFKA_RETRY_DELAY_MS` (integer 0..10000). Use different source/DLT topics. Provision topics before startup; auto creation is disabled. Restrict source produce permissions to trusted business services and test operators. The consumer trusts producer recipient selection for addressed events; never expose a public HTTP notification creation endpoint.
 
-The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt` (UTC ISO with milliseconds), `recipients` (1..100 unique Keycloak user IDs), and `data`. IDs accept ASCII letters/digits followed by letters/digits/underscore/hyphen, maximum 200 characters. Unknown properties are rejected. Each event ID must be globally unique and immutable: reusing it for the same recipient keeps the existing notification. Recipients come from authorized business producers, with no Core API lookup.
+The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt` (UTC ISO with milliseconds), `recipients` (1..100 unique Keycloak user IDs), and `data`. IDs accept ASCII letters/digits followed by letters/digits/underscore/hyphen, maximum 200 characters. Unknown properties are rejected. Each event ID must be globally unique and immutable: reusing it for the same recipient keeps the existing notification. All recipients are selected by authorized business producers; notification-service never queries a user directory.
 
 | Event types                                                    | Required data                  | Category    |
 | -------------------------------------------------------------- | ------------------------------ | ----------- |
@@ -15,7 +15,8 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | CONTRACT_AWAITING_SIGNATURE, CONTRACT_SIGNED, CONTRACT_EXPIRED | contractId                     | CONTRACT    |
 | PAYMENT_SUCCESSFUL, PAYMENT_FAILED, PAYMENT_OVERDUE            | paymentId                      | PAYMENT     |
 | CHAT_MESSAGE_RECEIVED                                          | conversationId                 | CHAT        |
-| PLATFORM_ANNOUNCEMENT                                          | title (1..200), body (1..2000) | SYSTEM      |
+| PLATFORM_ANNOUNCEMENT                                          | title (1..200), body (1..2000); admin form also requires priority and actionPath | SYSTEM |
+| NEWS_PUBLISHED                                                 | newsId, slug (only keys)       | NEWS        |
 | ACCOUNT_ROLE_CHANGED, ACCOUNT_DISABLED, ACCOUNT_ENABLED        | none: `data` must be exactly `{}` | ACCOUNT  |
 | MEMBERSHIP_ACTIVATED, MEMBERSHIP_PAYMENT_REVIEW                | orderId (only key)             | PAYMENT     |
 | PAYMENT_REQUEST_CREATED, PAYMENT_TRANSFER_REPORTED, PAYMENT_RECEIPT_CONFIRMED, PAYMENT_RECEIPT_REJECTED, PAYMENT_DISPUTE_OPENED, PAYMENT_DISPUTE_EVIDENCE_ADDED, PAYMENT_DISPUTE_PROPOSED, PAYMENT_DISPUTE_PROPOSAL_DECLINED, PAYMENT_DISPUTE_ESCALATED, PAYMENT_DISPUTE_REVIEW_TRANSFER, PAYMENT_DISPUTE_REOPENED | paymentId (only key), exactly one recipient | PAYMENT |
@@ -47,7 +48,15 @@ Edit approval does not imply the listing is published, and edit rejection does n
 
 **Rollout order:** deploy and verify this consumer before `hs-core-api` publishes the new types or the optional `listingTitle`. Older strict consumers send unknown types and fields to the DLT. Use `listingId` as the Kafka key and a new immutable event ID per transition.
 
-Announcements accept plain text only (no HTML/control characters), with no producer URLs. All priorities are NORMAL, including scheduler booking events. Private chat text, financial details and rejection reasons are deliberately absent. Publish each transition with a new immutable event ID (not the booking ID reused across its lifecycle), use the booking ID as Kafka key, and serialize `occurredAt` with exactly three UTC millisecond digits.
+Legacy announcements accept exactly `{title, body}` with plain text only (no HTML/control characters), default priority `NORMAL`, and route `/notifications`. Admin announcements accept exactly `{title, body, priority, actionPath}`: priority is `NORMAL`, `HIGH` or `URGENT`; actionPath uses the existing safe same-origin relative route validator (maximum 500 characters); body also permits CR/LF/tab for existing admin multiline input, while rejecting other control characters and HTML. Every other event priority remains `NORMAL`, including scheduler booking events. Private chat text, financial details and rejection reasons are deliberately absent. Publish each transition with a new immutable event ID (not the booking ID reused across its lifecycle), use the booking ID as Kafka key, and serialize `occurredAt` with exactly three UTC millisecond digits.
+
+## News publication broadcast
+
+News publication flows through Kafka: News → `homespace.news.events.v1` source event → Core audience selection and durable outbox → `homespace.notification.events.v1` targeted events → notification-service. Only Core consumes the News source envelope with `recipients: []`; notification-service rejects it. Core selects active USER recipients and emits batches of 1..100 IDs with the stable `eventId: news_<newsId>` and `data` exactly `{newsId, slug}`. The slug uses 1..255 lowercase ASCII letters/digits with internal hyphens. Notification-service only validates and persists the targeted events; there is no callback HTTP or user-directory request. `GATEWAY_INTERNAL_SECRET` is still required for inbound REST authentication.
+
+Every batch commits only after all targeted recipients are persisted; transient MongoDB failure leaves its offset uncommitted for replay. The unique `(recipientId, sourceEventId)` key prevents duplicate rows across chunk retries and replay. The generic in-app notification opens `/news/<encoded slug>`; NEWS push preference defaults on and can be disabled. Email preferences are stored, but this service has no email sender. In-app records are always persisted under the existing preference semantics.
+
+Deploy every notification consumer replica before Core emits targeted News events, then enable the News source publisher after Core's consumer/outbox and the source topic are ready. Older consumers quarantine this new type or reject its targeted recipients. The source topic and notification topic remain separate; notification-service subscribes only to its existing notification topic.
 
 ## Rental request events
 

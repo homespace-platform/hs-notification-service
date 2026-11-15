@@ -46,6 +46,7 @@ Qua Gateway dùng prefix `http://localhost:8080/api/v1/notifications` và `Autho
 | DELETE | `/:id` | Xóa mềm; không truy cập được thông báo của tài khoản khác. |
 | GET | `/preferences` | Lấy cài đặt theo category. |
 | PUT | `/preferences` | `{ "items": [{ "category": "LISTING", "push": false, "email": false }] }`. Category gửi lên là phần thay thế; category bỏ qua được đặt về mặc định bật. |
+| PATCH | `/preferences` | `{ "category": "NEWS", "channel": "push", "enabled": false }`. Atomically updates one category/channel for the authenticated user, preserving other settings across tabs/devices; returns all categories with enabled defaults. `channel` accepts `push` or `email`. |
 | PUT | `/devices` | `{ "installationId": "UUID-v4", "installationSecret": "chuỗi-base64url-ngẫu-nhiên-43-128-ký-tự", "fid": "Firebase-installation-ID" }`. |
 | DELETE | `/devices/:installationId` | Body `{ "installationSecret": "cùng giá trị đã đăng ký" }`; gọi khi logout/tắt push. |
 
