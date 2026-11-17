@@ -138,6 +138,7 @@ const templates = {
     'Yêu cầu đặt lịch xem nhà đã hết hạn trước khi được xác nhận.',
     'bookingId',
   ],
+  BOOKING_REMINDER: ['APPOINTMENT', 'Sắp đến lịch xem nhà', 'Bạn có lịch xem nhà sắp tới. Vui lòng mở lịch để kiểm tra thời gian hiện tại.', 'bookingId'],
   CONTRACT_AWAITING_SIGNATURE: [
     'CONTRACT',
     'Hợp đồng cần ký',
@@ -218,6 +219,7 @@ const isAccountType = (value: string): value is keyof typeof accountTemplates =>
 // Copy is neutral to payer/payee (refunds reverse direction) and carries no amount, bank, name, reason or file.
 // A reported transfer, a routed dispute or a created request never implies a confirmed receipt or a payable window.
 const paymentTemplates = {
+  PAYMENT_DUE_SOON: ['Sắp đến hạn thanh toán', 'Một nghĩa vụ thanh toán sắp đến hạn. Vui lòng mở hồ sơ để kiểm tra trạng thái và các bước hiện có.'],
   PAYMENT_REQUEST_CREATED: [
     'Có khoản thanh toán mới',
     'Một khoản thanh toán mới đã được tạo cho bạn. Vui lòng mở danh sách thanh toán để xem chi tiết và trạng thái hiện tại.',
@@ -274,6 +276,8 @@ const isPaymentType = (value: string): value is keyof typeof paymentTemplates =>
 // Copy is static, names no amount, date, meter, reason, note or person, and always sends the viewer to the CURRENT invoice
 // (an invoice can change state after the event; a notice never promises a status, payable window or lease outcome).
 const invoiceTemplates = {
+  INVOICE_METER_REMINDER: ['Cần chốt chỉ số hóa đơn', 'Đã đến mốc chốt chỉ số. Vui lòng mở hóa đơn để kiểm tra và hoàn tất các mục còn thiếu.'],
+  INVOICE_PAYMENT_REMINDER: ['Hóa đơn sắp đến hạn', 'Một hóa đơn sắp đến hạn thanh toán. Vui lòng mở hóa đơn để kiểm tra trạng thái hiện tại.'],
   INVOICE_DRAFT_READY: [
     'Có hóa đơn tháng mới cần kiểm tra',
     'Một hóa đơn tháng mới đã được tạo. Vui lòng mở hóa đơn để kiểm tra nội dung và trạng thái hiện tại.',
@@ -367,6 +371,7 @@ const isAmendmentType = (value: string): value is keyof typeof amendmentTemplate
   Object.hasOwn(amendmentTemplates, value);
 
 const renewalTemplates = {
+  LEASE_RENEWAL_WINDOW_OPENED: ['Đã đến thời gian xem xét gia hạn', 'Hợp đồng đang trong thời gian có thể xem xét gia hạn. Vui lòng mở hồ sơ để kiểm tra thời hạn hiện tại và các lựa chọn.'],
   RENEWAL_REQUESTED: ['Có yêu cầu gia hạn hợp đồng', 'Người thuê đã gửi yêu cầu gia hạn. Chủ nhà có thể mở hồ sơ để xem và quyết định.'],
   RENEWAL_APPROVED: ['Yêu cầu gia hạn được chấp thuận', 'Chủ nhà đã chấp thuận yêu cầu gia hạn và tạo văn bản ký. Hợp đồng chỉ được gia hạn sau khi hoàn tất các bước ký cần thiết.'],
   RENEWAL_REJECTED: ['Yêu cầu gia hạn bị từ chối', 'Chủ nhà đã từ chối yêu cầu gia hạn. Vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
@@ -376,6 +381,7 @@ const isRenewalType = (value: string): value is keyof typeof renewalTemplates =>
   Object.hasOwn(renewalTemplates, value);
 
 const terminationTemplates = {
+  TERMINATION_APPROVED: ['Chủ nhà đã đồng ý đề nghị chấm dứt sớm', 'Phụ lục chấm dứt sớm đang chờ ký. Ngày kết thúc hiện tại chỉ thay đổi sau khi hoàn tất các chữ ký cần thiết.'],
   TERMINATION_RESPONSE_NEEDED: ['Có đề nghị chấm dứt sớm', 'Bên còn lại đã gửi đề nghị chấm dứt sớm. Vui lòng mở hồ sơ để xem và phản hồi.'],
   TERMINATION_AGREED: ['Đề nghị chấm dứt đã được đồng ý', 'Bên còn lại đã đồng ý đề nghị chấm dứt sớm. Việc trả nhà và quyết toán vẫn cần hoàn tất riêng.'],
   TERMINATION_DECLINED: ['Đề nghị chấm dứt bị từ chối', 'Bên còn lại đã từ chối đề nghị chấm dứt sớm. Vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
@@ -403,6 +409,37 @@ const returnSettlementTemplates = {
 } as const;
 const isReturnSettlementType = (value: string): value is keyof typeof returnSettlementTemplates =>
   Object.hasOwn(returnSettlementTemplates, value);
+
+const kycTemplates = {
+  KYC_VERIFIED: ['Kết quả xác minh danh tính', 'Việc xác minh danh tính đã hoàn tất. Vui lòng mở tài khoản và bảo mật để xem kết quả hiện tại.'],
+  KYC_REJECTED: ['Xác minh danh tính chưa được chấp nhận', 'Vui lòng mở tài khoản và bảo mật để xem kết quả và hướng dẫn xác minh lại.'],
+  KYC_RETRY_REQUIRED: ['Cần thực hiện lại xác minh danh tính', 'Phiên xác minh chưa thể hoàn tất. Vui lòng mở tài khoản và bảo mật để kiểm tra và thử lại.'],
+} as const;
+const membershipExpiryTemplates = {
+  MEMBERSHIP_EXPIRING_SOON: ['Gói thành viên sắp hết hạn', 'Gói thành viên của bạn sắp hết hạn. Vui lòng mở trang gói thành viên để xem thời hạn hiện tại.'],
+  MEMBERSHIP_EXPIRED: ['Gói thành viên đã hết hạn', 'Thời hạn của một gói thành viên đã kết thúc. Vui lòng mở trang gói thành viên để kiểm tra gói đang áp dụng.'],
+} as const;
+const complaintTemplates = {
+  COMPLAINT_OPENED: ['Có hồ sơ khiếu nại mới', 'Một hồ sơ khiếu nại đã được mở. Vui lòng xem nội dung và các bước hiện có.'],
+  COMPLAINT_COMMENTED: ['Có trao đổi trong hồ sơ khiếu nại', 'Hồ sơ khiếu nại có phản hồi hoặc chứng cứ mới. Vui lòng mở hồ sơ để xem.'],
+  COMPLAINT_ESCALATED: ['Khiếu nại đã chuyển HomeSpace', 'Hồ sơ khiếu nại cần HomeSpace hỗ trợ xem xét. Vui lòng mở hồ sơ để kiểm tra trạng thái hiện tại.'],
+  COMPLAINT_ASSIGNED: ['HomeSpace đã tiếp nhận khiếu nại', 'Hồ sơ khiếu nại đã được tiếp nhận để xem xét. Vui lòng theo dõi trao đổi trong hồ sơ.'],
+  COMPLAINT_INFO_REQUESTED: ['Cần bổ sung thông tin khiếu nại', 'HomeSpace yêu cầu bổ sung thông tin. Vui lòng mở hồ sơ để xem yêu cầu và thời hạn hiện tại.'],
+  COMPLAINT_DECIDED: ['HomeSpace đã kết luận lần đầu', 'HomeSpace đã ghi kết luận lần đầu. Hai bên có thể tiếp tục trao đổi, đóng hồ sơ hoặc yêu cầu xem xét lần cuối.'],
+  COMPLAINT_FINAL_DECISION: ['HomeSpace đã kết luận lần cuối', 'HomeSpace đã kết luận lần thứ hai và đóng hồ sơ. Bạn có thể mở lại lịch sử để xem kết luận.'],
+  COMPLAINT_CLOSED: ['Hồ sơ khiếu nại đã đóng', 'Hồ sơ khiếu nại đã được đóng. Lịch sử trao đổi và chứng cứ vẫn được giữ để tra cứu.'],
+  COMPLAINT_REOPENED: ['Hồ sơ khiếu nại được mở lại', 'Hồ sơ khiếu nại được mở lại để tiếp tục trao đổi. Vui lòng mở hồ sơ để xem.'],
+  COMPLAINT_WITHDRAWN: ['Hồ sơ khiếu nại đã được rút', 'Hồ sơ khiếu nại đã được rút. Lịch sử vẫn được giữ để tra cứu.'],
+  COMPLAINT_SOURCE_UPDATED: ['Hồ sơ khiếu nại có cập nhật', 'Nguồn thông tin liên quan đến khiếu nại đã thay đổi. Vui lòng mở hồ sơ để đối chiếu.'],
+} as const;
+const operationalTemplates = {
+  SYSTEM_INCIDENT_OPENED: ['Hệ thống có sự cố cần kiểm tra', 'Một thành phần hệ thống cần quản trị viên kiểm tra. Vui lòng mở cảnh báo vận hành để xem trạng thái hiện tại.'],
+  SYSTEM_INCIDENT_RESOLVED: ['Sự cố hệ thống đã phục hồi', 'Một sự cố hệ thống đã được ghi nhận phục hồi. Vui lòng mở cảnh báo vận hành để kiểm tra.'],
+} as const;
+const isKycType = (value: string): value is keyof typeof kycTemplates => Object.hasOwn(kycTemplates, value);
+const isMembershipExpiryType = (value: string): value is keyof typeof membershipExpiryTemplates => Object.hasOwn(membershipExpiryTemplates, value);
+const isComplaintType = (value: string): value is keyof typeof complaintTemplates => Object.hasOwn(complaintTemplates, value);
+const isOperationalType = (value: string): value is keyof typeof operationalTemplates => Object.hasOwn(operationalTemplates, value);
 
 // Fixed, status-specific copy; the producer only sends the status code.
 const listingStatusCopy = {
@@ -443,6 +480,10 @@ export interface NotificationEvent {
     | keyof typeof renewalTemplates
     | keyof typeof terminationTemplates
     | keyof typeof returnSettlementTemplates
+    | keyof typeof kycTemplates
+    | keyof typeof membershipExpiryTemplates
+    | keyof typeof complaintTemplates
+    | keyof typeof operationalTemplates
     | 'NEWS_PUBLISHED'
     | 'CHAT_ALERT_REQUESTED'
     | 'PLATFORM_ANNOUNCEMENT';
@@ -499,6 +540,8 @@ export function parseNotificationEvent(
         isRenewalType(input.eventType) ||
         isTerminationType(input.eventType) ||
         isReturnSettlementType(input.eventType) ||
+        isKycType(input.eventType) || isMembershipExpiryType(input.eventType) ||
+        isComplaintType(input.eventType) || isOperationalType(input.eventType) ||
         input.eventType === 'NEWS_PUBLISHED' ||
         input.eventType === 'CHAT_ALERT_REQUESTED' ||
         input.eventType === 'PLATFORM_ANNOUNCEMENT'
@@ -517,7 +560,17 @@ export function parseNotificationEvent(
       throw new InvalidNotificationEvent();
     }
     const event = input as unknown as NotificationEvent;
-    if (event.eventType === 'CHAT_ALERT_REQUESTED') {
+    if (isKycType(event.eventType)) {
+      if (event.recipients.length !== 1 || Object.keys(event.data).join(',') !== 'attemptId' || !identifier(event.data.attemptId)) throw new InvalidNotificationEvent();
+    } else if (isMembershipExpiryType(event.eventType)) {
+      if (event.recipients.length !== 1 || Object.keys(event.data).length !== 0) throw new InvalidNotificationEvent();
+    } else if (isComplaintType(event.eventType)) {
+      if (event.recipients.length !== 1 || Object.keys(event.data).sort().join(',') !== 'audience,caseId,rentalRequestId'
+        || !identifier(event.data.caseId) || !identifier(event.data.rentalRequestId) || !['PARTY','ADMIN'].includes(event.data.audience)) throw new InvalidNotificationEvent();
+    } else if (isOperationalType(event.eventType)) {
+      if (event.recipients.length !== 1 || Object.keys(event.data).sort().join(',') !== 'component,incidentId'
+        || !identifier(event.data.incidentId) || !['BLOCKCHAIN','GATEWAY'].includes(event.data.component)) throw new InvalidNotificationEvent();
+    } else if (event.eventType === 'CHAT_ALERT_REQUESTED') {
       if (
         event.recipients.length !== 1 ||
         Object.keys(event.data).sort().join(',') !== 'conversationId,messageId' ||
@@ -592,6 +645,7 @@ export function parseNotificationEvent(
       const idKey = templates[event.eventType][3];
       const keys = Object.keys(event.data);
       const booking = idKey === 'bookingId';
+      if (event.eventType === 'BOOKING_REMINDER' && event.recipients.length !== 1) throw new InvalidNotificationEvent();
       const listing = idKey === 'listingId';
       const extra = listingExtraKey[event.eventType];
       if (
@@ -628,13 +682,47 @@ export function renderNotification(
   event: NotificationEvent,
   recipientId: string,
 ): NewNotification {
-  if (event.eventType === 'CHAT_ALERT_REQUESTED') throw new InvalidNotificationEvent();
   const common = {
     recipientId,
     sourceEventId: event.eventId,
     type: event.eventType,
     priority: 'NORMAL' as const,
   };
+  if (event.eventType === 'CHAT_ALERT_REQUESTED' || event.eventType === 'CHAT_MESSAGE_RECEIVED') {
+    const conversationId = event.data.conversationId;
+    return {
+      ...common,
+      category: 'CHAT',
+      title: 'Tin nhắn mới',
+      body: 'Bạn vừa nhận được một tin nhắn mới.',
+      actionPath: `/chat?channel=direct&conversationId=${encodeURIComponent(conversationId)}`,
+      metadata: {
+        conversationId,
+        ...(event.eventType === 'CHAT_ALERT_REQUESTED' ? { messageId: event.data.messageId } : {}),
+      },
+    };
+  }
+  if (isKycType(event.eventType)) {
+    const [title, body] = kycTemplates[event.eventType];
+    return { ...common, category: 'ACCOUNT', title, body, actionPath: ACCOUNT_ACTION_PATH, metadata: {attemptId: event.data.attemptId} };
+  }
+  if (isMembershipExpiryType(event.eventType)) {
+    const [title, body] = membershipExpiryTemplates[event.eventType];
+    return { ...common, category: 'PAYMENT', title, body, actionPath: '/dashboard/membership', metadata: {} };
+  }
+  if (isComplaintType(event.eventType)) {
+    const [title, body] = complaintTemplates[event.eventType];
+    const {caseId, rentalRequestId, audience} = event.data;
+    return { ...common, category: 'RENTAL_REQUEST', title, body,
+      actionPath: audience === 'ADMIN' ? `/operations/complaints?caseId=${encodeURIComponent(caseId)}`
+        : `/dashboard/complaints?requestId=${encodeURIComponent(rentalRequestId)}&complaintId=${encodeURIComponent(caseId)}`,
+      metadata: {caseId, rentalRequestId, audience} };
+  }
+  if (isOperationalType(event.eventType)) {
+    const [title, body] = operationalTemplates[event.eventType];
+    return { ...common, category: 'SYSTEM', title, body,
+      actionPath: `/operations/system-alerts?incidentId=${encodeURIComponent(event.data.incidentId)}`, metadata: {...event.data} };
+  }
   if (event.eventType === 'NEWS_PUBLISHED') {
     return {
       ...common,

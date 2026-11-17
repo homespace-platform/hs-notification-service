@@ -168,18 +168,6 @@ export class NotificationService {
     return this.withDefaults(await this.preferences.find(userId));
   }
 
-  async alertChat(
-    recipientId: string,
-    eventId: string,
-    conversationId: string,
-    messageId: string,
-  ): Promise<void> {
-    const preferences = await this.getPreferences(recipientId);
-    if (preferences.find((item) => item.category === 'CHAT')?.push) {
-      this.realtime?.emitChatAlert(recipientId, eventId, conversationId, messageId);
-    }
-  }
-
   async updatePreferences(
     userId: string,
     items: PreferenceItem[],
