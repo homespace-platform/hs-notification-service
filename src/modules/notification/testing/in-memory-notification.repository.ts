@@ -50,6 +50,7 @@ export class InMemoryNotificationRepository extends NotificationRepository {
     const { cursor } = query;
     return this.rows
       .filter((row) => row.recipientId === recipientId && !row.deletedAt)
+      .filter((row) => row.category !== 'CHAT')
       .filter((row) => !query.category || row.category === query.category)
       .filter((row) => !query.unreadOnly || !row.readAt)
       .filter(
@@ -70,7 +71,7 @@ export class InMemoryNotificationRepository extends NotificationRepository {
 
   async countUnread(recipientId: string): Promise<number> {
     return this.rows.filter(
-      (row) => row.recipientId === recipientId && !row.deletedAt && !row.readAt,
+      (row) => row.recipientId === recipientId && row.category !== 'CHAT' && !row.deletedAt && !row.readAt,
     ).length;
   }
 
@@ -87,7 +88,7 @@ export class InMemoryNotificationRepository extends NotificationRepository {
 
   async markAllRead(recipientId: string, now: Date): Promise<number> {
     const unread = this.rows.filter(
-      (row) => row.recipientId === recipientId && !row.deletedAt && !row.readAt,
+      (row) => row.recipientId === recipientId && row.category !== 'CHAT' && !row.deletedAt && !row.readAt,
     );
     unread.forEach((row) => (row.readAt = now));
     return unread.length;

@@ -39,8 +39,9 @@ export function buildFeedFilter(
   const filter: QueryFilter<NotificationDocument> = {
     recipientId,
     deletedAt: null,
+    // Chat delivery records support popup/push only, never the notification bell.
+    category: query.category === 'CHAT' ? { $in: [] } : query.category ?? { $ne: 'CHAT' },
   };
-  if (query.category) filter.category = query.category;
   if (query.unreadOnly) filter.readAt = null;
   if (query.cursor) {
     const id = new Types.ObjectId(query.cursor.id);
@@ -111,7 +112,7 @@ export class MongoNotificationRepository extends NotificationRepository implemen
 
   countUnread(recipientId: string): Promise<number> {
     return this.model
-      .countDocuments({ recipientId, deletedAt: null, readAt: null })
+      .countDocuments({ recipientId, deletedAt: null, readAt: null, category: { $ne: 'CHAT' } })
       .exec();
   }
 
@@ -142,7 +143,7 @@ export class MongoNotificationRepository extends NotificationRepository implemen
   async markAllRead(recipientId: string, now: Date): Promise<number> {
     const result = await this.model
       .updateMany(
-        { recipientId, deletedAt: null, readAt: null },
+        { recipientId, deletedAt: null, readAt: null, category: { $ne: 'CHAT' } },
         { $set: { readAt: now } },
       )
       .exec();

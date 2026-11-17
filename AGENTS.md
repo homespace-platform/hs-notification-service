@@ -38,6 +38,8 @@ Do not read all docs for a small change. Treat `docs/memory.md`, if present, as 
 
 ## MongoDB
 
+- Product rule: CHAT delivery records are internal to popup/push delivery and deduplication. Exclude CHAT (including historical records) from bell feed, unread count and bell read-all. Keep chat's own unread state separate. Do not treat its absence from the bell as missing integration.
+
 - Preserve unique constraints, recipient isolation and unread/read/soft-delete semantics.
 - Avoid destructive migrations. Index changes on existing collections need a rollout consideration.
 - Do not introduce cross-service database access.

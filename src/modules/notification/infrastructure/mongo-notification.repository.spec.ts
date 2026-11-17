@@ -33,20 +33,21 @@ describe('buildFeedFilter', () => {
     expect(buildFeedFilter('u1', {})).toEqual({
       recipientId: 'u1',
       deletedAt: null,
+      category: { $ne: 'CHAT' },
     });
   });
 
   it('adds keyset (createdAt, _id) cursor, category and unread filters', () => {
     const createdAt = new Date('2026-01-01T00:00:00Z');
     const filter = buildFeedFilter('u1', {
-      category: 'CHAT',
+      category: 'PAYMENT',
       unreadOnly: true,
       cursor: { createdAt, id: ID },
     });
     expect(filter).toMatchObject({
       recipientId: 'u1',
       deletedAt: null,
-      category: 'CHAT',
+      category: 'PAYMENT',
       readAt: null,
     });
     expect(filter.$or).toEqual([
@@ -55,9 +56,28 @@ describe('buildFeedFilter', () => {
     ]);
     expect(filter).not.toHaveProperty('skip');
   });
+
+  it('cannot expose chat delivery records even through the category filter', () => {
+    expect(buildFeedFilter('u1', { category: 'CHAT' })).toMatchObject({
+      recipientId: 'u1', category: { $in: [] }, deletedAt: null,
+    });
+  });
 });
 
 describe('MongoNotificationRepository', () => {
+  it('excludes historical chat records from bell count and read-all', async () => {
+    const filters: unknown[] = [];
+    const repo = new MongoNotificationRepository({
+      countDocuments: (filter: unknown) => { filters.push(filter); return query(2); },
+      updateMany: (filter: unknown) => { filters.push(filter); return query({ modifiedCount: 2 }); },
+    } as never);
+    expect(await repo.countUnread('u1')).toBe(2);
+    expect(await repo.markAllRead('u1', new Date())).toBe(2);
+    expect(filters).toEqual([
+      { recipientId: 'u1', deletedAt: null, readAt: null, category: { $ne: 'CHAT' } },
+      { recipientId: 'u1', deletedAt: null, readAt: null, category: { $ne: 'CHAT' } },
+    ]);
+  });
   it('fails startup when required indexes cannot initialize', async () => {
     const repository = new MongoNotificationRepository({
       init: async () => { throw new Error('index unavailable'); },

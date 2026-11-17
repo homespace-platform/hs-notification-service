@@ -65,30 +65,32 @@ describe('Kafka chat alert delivery', () => {
     return { notifications, preferences, service, consumer, payload, to, emit, enqueue, commitOffsets, send };
   };
 
-  it('stores one recipient-scoped feed item, emits one popup and commits afterward', async () => {
+  it('stores a delivery record, emits one popup and never adds chat to the bell', async () => {
     const x = setup();
     await x.consumer.consume(x.payload);
-    expect(x.to.mock.calls).toEqual([['user:alice'], ['user:alice']]);
+    expect(x.to.mock.calls).toEqual([['user:alice']]);
     expect(x.emit.mock.calls[0]).toEqual(['notification:new', expect.objectContaining({
       category: 'CHAT', type: 'CHAT_ALERT_REQUESTED', popupAllowed: true,
     })]);
-    expect(x.emit.mock.calls[1]).toEqual(['notification:unread-count', { count: 1 }]);
-    expect((await x.service.getFeed('alice', {})).items).toHaveLength(1);
+    expect(x.emit).toHaveBeenCalledTimes(1);
+    expect(x.notifications.rows).toHaveLength(1);
+    expect((await x.service.getFeed('alice', {})).items).toHaveLength(0);
+    expect((await x.service.getFeed('alice', { category: 'CHAT' })).items).toHaveLength(0);
     expect((await x.service.getFeed('bob', {})).items).toHaveLength(0);
-    expect(await x.service.getUnreadCount('alice')).toEqual({ count: 1 });
+    expect(await x.service.getUnreadCount('alice')).toEqual({ count: 0 });
     expect(x.enqueue).toHaveBeenCalledWith(expect.objectContaining({category: 'CHAT'}), 'alice');
     expect(x.send).not.toHaveBeenCalled();
     expect(x.commitOffsets).toHaveBeenCalledWith([{ topic: 'events', partition: 0, offset: '5' }]);
     expect(x.emit.mock.invocationCallOrder[0]).toBeLessThan(x.commitOffsets.mock.invocationCallOrder[0]);
   });
 
-  it('respects CHAT push opt-out while retaining the in-app notification', async () => {
+  it('respects CHAT push opt-out while retaining the internal delivery record', async () => {
     const x = setup();
     await x.preferences.patch('alice', 'CHAT', 'push', false);
     await x.consumer.consume(x.payload);
     expect(x.emit.mock.calls[0]).toEqual(['notification:new', expect.objectContaining({popupAllowed: false})]);
     expect(x.commitOffsets).toHaveBeenCalledTimes(1);
-    expect(await x.service.getUnreadCount('alice')).toEqual({ count: 1 });
+    expect(await x.service.getUnreadCount('alice')).toEqual({ count: 0 });
   });
 
   it('keeps persisted chat if preference lookup fails', async () => {
@@ -97,7 +99,7 @@ describe('Kafka chat alert delivery', () => {
     await x.consumer.consume(x.payload);
     expect(find).toHaveBeenCalledTimes(1);
     expect(x.emit.mock.calls[0]).toEqual(['notification:new', expect.objectContaining({popupAllowed: false})]);
-    expect((await x.service.getFeed('alice', {})).items).toHaveLength(1);
+    expect(x.notifications.rows).toHaveLength(1);
     expect(x.commitOffsets).toHaveBeenCalledTimes(1);
     expect(x.send).not.toHaveBeenCalled();
   });
@@ -107,7 +109,7 @@ describe('Kafka chat alert delivery', () => {
     x.emit.mockImplementationOnce(() => { throw new Error('socket unavailable'); });
     await x.consumer.consume(x.payload);
     expect(x.emit).toHaveBeenCalledTimes(1);
-    expect((await x.service.getFeed('alice', {})).items).toHaveLength(1);
+    expect(x.notifications.rows).toHaveLength(1);
     expect(x.commitOffsets).toHaveBeenCalledTimes(1);
     expect(x.send).not.toHaveBeenCalled();
   });
@@ -120,11 +122,11 @@ describe('Kafka chat alert delivery', () => {
     expect(x.send).not.toHaveBeenCalled();
   });
 
-  it('replay does not duplicate the feed item or realtime popup', async () => {
+  it('replay does not duplicate the delivery record or realtime popup', async () => {
     const x = setup();
     await x.consumer.consume(x.payload);
     await x.consumer.consume(x.payload);
-    expect((await x.service.getFeed('alice', {})).items).toHaveLength(1);
+    expect(x.notifications.rows).toHaveLength(1);
     expect(x.emit.mock.calls.filter(([event]) => event === 'notification:new')).toHaveLength(1);
     expect(x.commitOffsets).toHaveBeenCalledTimes(2);
   });

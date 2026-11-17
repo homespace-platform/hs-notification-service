@@ -94,10 +94,12 @@ export class NotificationService {
       }
       try {
         this.realtime.emitNew(record.recipientId, notification, popupAllowed);
-        this.realtime.emitUnreadCount(
-          record.recipientId,
-          await this.notifications.countUnread(record.recipientId),
-        );
+        if (record.category !== 'CHAT') {
+          this.realtime.emitUnreadCount(
+            record.recipientId,
+            await this.notifications.countUnread(record.recipientId),
+          );
+        }
       } catch {
         this.logger.warn(
           'Realtime notification deferred to client feed refresh',

@@ -153,6 +153,20 @@ describe('NotificationService', () => {
   });
 
   describe('feed', () => {
+    it('hides historical chat delivery rows while preserving business pagination and bell read-all', async () => {
+      const { service, notifications } = setup();
+      await seed(service, ALICE, 3);
+      await service.create(input({ sourceEventId: 'old-chat', category: 'CHAT', createdAt: new Date(T0 + 9999) }));
+      const first = await service.getFeed(ALICE, { limit: 2 });
+      expect(first.items.map(item => item.title)).toEqual(['n2', 'n1']);
+      expect(first.hasMore).toBe(true);
+      expect((await service.getFeed(ALICE, { limit: 2, cursor: first.nextCursor! })).items.map(item => item.title)).toEqual(['n0']);
+      expect((await service.getFeed(ALICE, { category: 'CHAT' })).items).toEqual([]);
+      expect(await service.getUnreadCount(ALICE)).toEqual({ count: 3 });
+      await service.markAllRead(ALICE);
+      expect(await service.getUnreadCount(ALICE)).toEqual({ count: 0 });
+      expect(notifications.rows.find(row => row.category === 'CHAT')?.readAt).toBeNull();
+    });
     it('only returns the caller’s notifications (cross-user isolation)', async () => {
       const { service } = setup();
       await seed(service, ALICE, 3);
