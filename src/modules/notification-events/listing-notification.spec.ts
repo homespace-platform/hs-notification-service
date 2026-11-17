@@ -75,8 +75,12 @@ describe('listing notification acceptance', () => {
     for (const type of ['LISTING_APPROVED', 'LISTING_REJECTED']) {
       expect(parse(type, { listingId }).data).toEqual({ listingId });
     }
-    for (const [type, key] of [['CONTRACT_SIGNED', 'contractId'], ['PAYMENT_SUCCESSFUL', 'paymentId'], ['CHAT_MESSAGE_RECEIVED', 'conversationId']]) {
-      expect(renderNotification(parse(type, { [key]: 'resource-1' }), 'owner')).toMatchObject({ actionPath: '/notifications', metadata: { [key]: 'resource-1' } });
+    for (const [type, key, actionPath] of [
+      ['CONTRACT_SIGNED', 'contractId', '/notifications'],
+      ['PAYMENT_SUCCESSFUL', 'paymentId', '/notifications'],
+      ['CHAT_MESSAGE_RECEIVED', 'conversationId', '/chat?channel=direct&conversationId=resource-1'],
+    ]) {
+      expect(renderNotification(parse(type, { [key]: 'resource-1' }), 'owner')).toMatchObject({ actionPath, metadata: { [key]: 'resource-1' } });
       expect(() => parse(type, { [key]: 'resource-1', listingTitle: 'extra' })).toThrow();
     }
   });

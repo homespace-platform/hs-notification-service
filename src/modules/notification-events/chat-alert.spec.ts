@@ -18,10 +18,14 @@ const chat = {
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));
 
 describe('chat alert contract', () => {
-  it('accepts only the minimal recipient-scoped payload and cannot render a feed notification', () => {
+  it('accepts only the minimal recipient-scoped payload and renders a safe chat notification', () => {
     const parsed = parseNotificationEvent(encode(chat));
     expect(parsed).toEqual(chat);
-    expect(() => renderNotification(parsed, 'alice')).toThrow('Invalid notification event');
+    expect(renderNotification(parsed, 'alice')).toMatchObject({
+      recipientId: 'alice', sourceEventId: chat.eventId, category: 'CHAT',
+      actionPath: '/chat?channel=direct&conversationId=conversation-1',
+      metadata: chat.data,
+    });
   });
 
   it.each([
@@ -43,7 +47,8 @@ describe('Kafka chat alert delivery', () => {
     const to = jest.fn(() => ({ emit }));
     const realtime = new NotificationRealtimeService();
     realtime.attach({ to } as unknown as Namespace);
-    const service = new NotificationService(notifications, preferences, undefined, realtime);
+    const enqueue = jest.fn(async () => undefined);
+    const service = new NotificationService(notifications, preferences, { enqueue } as never, realtime);
     const consumer = new NotificationEventsConsumer(new ConfigService({
       KAFKA_RETRY_ATTEMPTS: 2,
       KAFKA_RETRY_DELAY_MS: 0,
@@ -57,58 +62,70 @@ describe('Kafka chat alert delivery', () => {
       message: { offset: '4', value: encode(chat) },
       heartbeat: async () => undefined,
     } as unknown as Parameters<typeof consumer.consume>[0];
-    return { notifications, preferences, service, consumer, payload, to, emit, commitOffsets, send };
+    return { notifications, preferences, service, consumer, payload, to, emit, enqueue, commitOffsets, send };
   };
 
-  it('emits only to the authenticated recipient room, commits, and leaves feed and unread untouched', async () => {
+  it('stores one recipient-scoped feed item, emits one popup and commits afterward', async () => {
     const x = setup();
     await x.consumer.consume(x.payload);
-    expect(x.to.mock.calls).toEqual([['user:alice']]);
-    expect(x.emit.mock.calls).toEqual([['chat:alert', {
-      eventId: chat.eventId, ...chat.data,
-    }]]);
-    expect((await x.service.getFeed('alice', {})).items).toEqual([]);
-    expect(await x.service.getUnreadCount('alice')).toEqual({ count: 0 });
+    expect(x.to.mock.calls).toEqual([['user:alice'], ['user:alice']]);
+    expect(x.emit.mock.calls[0]).toEqual(['notification:new', expect.objectContaining({
+      category: 'CHAT', type: 'CHAT_ALERT_REQUESTED', popupAllowed: true,
+    })]);
+    expect(x.emit.mock.calls[1]).toEqual(['notification:unread-count', { count: 1 }]);
+    expect((await x.service.getFeed('alice', {})).items).toHaveLength(1);
+    expect((await x.service.getFeed('bob', {})).items).toHaveLength(0);
+    expect(await x.service.getUnreadCount('alice')).toEqual({ count: 1 });
+    expect(x.enqueue).toHaveBeenCalledWith(expect.objectContaining({category: 'CHAT'}), 'alice');
     expect(x.send).not.toHaveBeenCalled();
     expect(x.commitOffsets).toHaveBeenCalledWith([{ topic: 'events', partition: 0, offset: '5' }]);
     expect(x.emit.mock.invocationCallOrder[0]).toBeLessThan(x.commitOffsets.mock.invocationCallOrder[0]);
   });
 
-  it('respects CHAT push opt-out without persisting or emitting', async () => {
+  it('respects CHAT push opt-out while retaining the in-app notification', async () => {
     const x = setup();
     await x.preferences.patch('alice', 'CHAT', 'push', false);
     await x.consumer.consume(x.payload);
-    expect(x.emit).not.toHaveBeenCalled();
+    expect(x.emit.mock.calls[0]).toEqual(['notification:new', expect.objectContaining({popupAllowed: false})]);
     expect(x.commitOffsets).toHaveBeenCalledTimes(1);
-    expect(await x.service.getUnreadCount('alice')).toEqual({ count: 0 });
+    expect(await x.service.getUnreadCount('alice')).toEqual({ count: 1 });
   });
 
-  it('retries preference failures and leaves the source offset uncommitted', async () => {
+  it('keeps persisted chat if preference lookup fails', async () => {
     const x = setup();
     const find = jest.spyOn(x.preferences, 'find').mockRejectedValue(new Error('database unavailable'));
+    await x.consumer.consume(x.payload);
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(x.emit.mock.calls[0]).toEqual(['notification:new', expect.objectContaining({popupAllowed: false})]);
+    expect((await x.service.getFeed('alice', {})).items).toHaveLength(1);
+    expect(x.commitOffsets).toHaveBeenCalledTimes(1);
+    expect(x.send).not.toHaveBeenCalled();
+  });
+
+  it('retains persisted chat and commits if realtime delivery fails', async () => {
+    const x = setup();
+    x.emit.mockImplementationOnce(() => { throw new Error('socket unavailable'); });
+    await x.consumer.consume(x.payload);
+    expect(x.emit).toHaveBeenCalledTimes(1);
+    expect((await x.service.getFeed('alice', {})).items).toHaveLength(1);
+    expect(x.commitOffsets).toHaveBeenCalledTimes(1);
+    expect(x.send).not.toHaveBeenCalled();
+  });
+
+  it('does not commit the source offset when chat persistence fails', async () => {
+    const x = setup();
+    jest.spyOn(x.notifications, 'insertIfAbsent').mockRejectedValue(new Error('database unavailable'));
     await expect(x.consumer.consume(x.payload)).rejects.toThrow('Notification persistence unavailable');
-    expect(find).toHaveBeenCalledTimes(2);
-    expect(x.emit).not.toHaveBeenCalled();
     expect(x.commitOffsets).not.toHaveBeenCalled();
     expect(x.send).not.toHaveBeenCalled();
   });
 
-  it('retries socket emission failure before committing the offset', async () => {
-    const x = setup();
-    x.emit.mockImplementationOnce(() => { throw new Error('socket unavailable'); });
-    await x.consumer.consume(x.payload);
-    expect(x.emit).toHaveBeenCalledTimes(2);
-    expect(x.commitOffsets).toHaveBeenCalledTimes(1);
-    expect(x.send).not.toHaveBeenCalled();
-  });
-
-  it('replay can duplicate the same eventId for client deduplication', async () => {
+  it('replay does not duplicate the feed item or realtime popup', async () => {
     const x = setup();
     await x.consumer.consume(x.payload);
     await x.consumer.consume(x.payload);
-    expect(x.emit.mock.calls).toEqual([
-      ['chat:alert', { eventId: chat.eventId, ...chat.data }],
-      ['chat:alert', { eventId: chat.eventId, ...chat.data }],
-    ]);
+    expect((await x.service.getFeed('alice', {})).items).toHaveLength(1);
+    expect(x.emit.mock.calls.filter(([event]) => event === 'notification:new')).toHaveLength(1);
+    expect(x.commitOffsets).toHaveBeenCalledTimes(2);
   });
 });

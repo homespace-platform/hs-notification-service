@@ -84,6 +84,18 @@ const templates = {
     'Thời hạn đăng tin của bạn đã kết thúc, kể cả khi tin đang có chỉnh sửa chờ duyệt.',
     'listingId',
   ],
+  SAVED_LISTING_UNAVAILABLE: [
+    'LISTING',
+    'Tin đã lưu ngừng hiển thị',
+    'Một tin bạn đã lưu hiện không còn hiển thị công khai và không còn trong danh sách tin đã lưu.',
+    'listingId',
+  ],
+  SAVED_LISTING_UPDATED: [
+    'LISTING',
+    'Tin đã lưu có cập nhật',
+    'Nội dung một tin bạn đã lưu vừa được cập nhật. Vui lòng mở tin để xem thông tin hiện tại.',
+    'listingId',
+  ],
   BOOKING_REQUESTED: [
     'APPOINTMENT',
     'Yêu cầu đặt lịch mới',
@@ -587,6 +599,12 @@ export function parseNotificationEvent(
         !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.data.slug) ||
         event.data.slug.length > 255
       ) throw new InvalidNotificationEvent();
+    } else if (event.eventType === 'SAVED_LISTING_UNAVAILABLE' || event.eventType === 'SAVED_LISTING_UPDATED') {
+      const keys = Object.keys(event.data).sort().join(',');
+      if (event.recipients.length !== 1 || (keys !== 'listingId' && keys !== 'listingId,listingTitle')
+        || !identifier(event.data.listingId)
+        || (keys === 'listingId,listingTitle' && !plainText(event.data.listingTitle, 120)))
+        throw new InvalidNotificationEvent();
     } else if (isAccountType(event.eventType)) {
       // Exactly one affected account and no producer data (no role, reason, actor or identity).
       if (event.recipients.length !== 1 || Object.keys(event.data).length !== 0)
@@ -841,7 +859,11 @@ export function renderNotification(
     category: category as NotificationCategory,
     title,
     body: detail ? `${body} ${detail}` : body,
-    actionPath: idKey === 'listingId'
+    actionPath: event.eventType === 'SAVED_LISTING_UNAVAILABLE'
+      ? '/favorites'
+      : event.eventType === 'SAVED_LISTING_UPDATED'
+      ? `/rent/${encodeURIComponent(event.data.listingId)}`
+      : idKey === 'listingId'
       ? `/dashboard/properties/view?id=${encodeURIComponent(event.data.listingId)}`
       : idKey === 'orderId'
         ? `/dashboard/membership/return?orderId=${encodeURIComponent(event.data.orderId)}`

@@ -40,9 +40,9 @@ Không sửa Core API trong đợt backend đầu tiên; `hs-core-api` sạch t�
 
 Yêu cầu tiếp theo có thể nối Core API qua transactional outbox/Kafka và frontend qua REST/realtime/push, dùng hợp đồng đã kiểm thử tại đây. Producer sẽ chịu trách nhiệm quyết định người nhận và chỉ phát sự kiện sau khi nghiệp vụ được ghi nhận chắc chắn.
 
-## Cập nhật: Admin broadcast tới USER
+## Cập nhật: Admin broadcast tới USER và ADMIN
 
-- Gateway chuyển `POST /api/v1/notifications/admin/broadcast` tới Core; Core kiểm tra role `ADMIN`, chọn USER active và trả HTTP 202 với `result: {broadcastId, status: 'QUEUED'}`. Core fanout/outbox phát `PLATFORM_ANNOUNCEMENT` targeted qua Kafka; notification-service chỉ lưu và phân phối. `broadcastId` UUIDv4 làm khóa chống trùng; retry giữ cùng ID/nội dung.
+- Gateway chuyển `POST /api/v1/notifications/admin/broadcast` tới Core; Core kiểm tra role `ADMIN`, chọn USER và ADMIN active và trả HTTP 202 với `result: {broadcastId, status: 'QUEUED'}`. Core fanout/outbox phát `PLATFORM_ANNOUNCEMENT` targeted qua Kafka; notification-service chỉ lưu và phân phối. `broadcastId` UUIDv4 làm khóa chống trùng; retry giữ cùng ID/nội dung.
 - `hs-admin-portal` có form ở **Vận hành & Hỗ trợ → Thông báo hệ thống**. `hs-web-app` đã nối REST, Socket.IO và đăng ký Firebase FID; có nút bật/tắt push. Xem [hướng dẫn thử broadcast](ADMIN_BROADCAST_TESTING.md) và hướng dẫn Firebase Web trong `hs-web-app/NOTIFICATION_BROWSER_SETUP.md`.
 - Notification-service không gọi HTTP để tra audience và không có endpoint admin broadcast. Cấu hình outgoing directory đã bỏ; `GATEWAY_INTERNAL_SECRET` vẫn bắt buộc cho REST inbound. Socket.IO và push giữ cấu hình hiện có.
 - News dùng source Kafka riêng → Core audience/outbox → targeted Kafka → notification-service. NEWS preferences và lưu in-app giữ nguyên; không có callback HTTP. Xem [checklist News](checklist/NEWS_NOTIFICATIONS.md) cho phạm vi xác minh hiện tại.

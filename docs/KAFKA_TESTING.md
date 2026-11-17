@@ -9,13 +9,14 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | LISTING_APPROVED, LISTING_REJECTED, LISTING_CREATED, LISTING_UPDATED, LISTING_EXPIRED | listingId; optional listingTitle | LISTING |
 | LISTING_EDIT_APPROVED, LISTING_EDIT_REJECTED                   | listingId, editId; optional listingTitle | LISTING |
 | LISTING_STATUS_CHANGED                                         | listingId, status (`PENDING_REVIEW`, `HIDDEN`, `VIOLATION`, `RENTED_EXTERNALLY`); optional listingTitle | LISTING |
+| SAVED_LISTING_UNAVAILABLE, SAVED_LISTING_UPDATED                  | listingId; optional listingTitle, exactly one active favoriter | LISTING |
 | BOOKING_REQUESTED, BOOKING_CONFIRMED, BOOKING_CANCELLED, BOOKING_REJECTED | bookingId; optional recipientSide | APPOINTMENT |
 | BOOKING_RESCHEDULE_REQUESTED, BOOKING_RESCHEDULE_APPROVED, BOOKING_RESCHEDULE_REJECTED | bookingId; optional recipientSide | APPOINTMENT |
 | BOOKING_COMPLETED, BOOKING_EXPIRED | bookingId; optional recipientSide | APPOINTMENT |
 | CONTRACT_AWAITING_SIGNATURE, CONTRACT_SIGNED, CONTRACT_EXPIRED | contractId                     | CONTRACT    |
 | PAYMENT_SUCCESSFUL, PAYMENT_FAILED, PAYMENT_OVERDUE            | paymentId                      | PAYMENT     |
 | CHAT_MESSAGE_RECEIVED                                          | conversationId                 | CHAT        |
-| CHAT_ALERT_REQUESTED                                           | conversationId, messageId (only keys), exactly one recipient | Socket only |
+| CHAT_ALERT_REQUESTED                                           | conversationId, messageId (only keys), exactly one recipient | CHAT |
 | PLATFORM_ANNOUNCEMENT                                          | title (1..200), body (1..2000); admin form also requires priority and actionPath | SYSTEM |
 | NEWS_PUBLISHED                                                 | newsId, slug (only keys)       | NEWS        |
 | ACCOUNT_ROLE_CHANGED, ACCOUNT_DISABLED, ACCOUNT_ENABLED        | none: `data` must be exactly `{}` | ACCOUNT  |
@@ -34,13 +35,15 @@ Resource events use fixed templates. Booking `data.recipientSide` accepts only `
 
 ## Chat alert
 
-`CHAT_ALERT_REQUESTED` uses the existing `homespace.notification.events.v1` topic and strict v1 envelope. Set `eventId` to `chat_<messageId>` and `recipients` to the one intended Keycloak user ID. `data` must be exactly `{conversationId,messageId}`; message text and other private fields are rejected. The consumer checks that recipient's `CHAT.push` preference (default on), then emits `chat:alert` with only `{eventId,conversationId,messageId}` to their authenticated socket room. It does not create a feed row, change global unread count, or enqueue Firebase/email delivery. Preference lookup and socket emission failures use bounded Kafka retries and leave the offset uncommitted when exhausted. An offline recipient has no socket replay; a crash after emission but before offset commit may duplicate the alert, so clients deduplicate by `eventId` and refresh chat state from the chat API.
+`CHAT_ALERT_REQUESTED` uses the existing `homespace.notification.events.v1` topic and strict v1 envelope. Set `eventId` to `chat_<messageId>` and `recipients` to the one intended Keycloak user ID. `data` must be exactly `{conversationId,messageId}`; message text and other private fields are rejected. The consumer persists a CHAT feed record and queues browser push through the normal delivery pipeline. Realtime uses `notification:new`, with no separate `chat:alert` emission, so one event produces one popup. `CHAT.push` controls popups and browser push; it does not suppress the durable feed record. Retries use the unique recipient/event ID constraint. Both chat event types open `/chat?channel=direct&conversationId=<encoded id>`. Email delivery remains deferred.
 
 Deploy every notification consumer replica before enabling or restarting the Chat producer; older strict consumers quarantine this event in the DLT and commit its source offset.
 
 ## Listing events
 
-All listing events are category `LISTING`, priority `NORMAL`, v1 envelope unchanged. `data` accepts only the keys in the table above (no others, no producer URLs, reasons or private content). `listingId` and `editId` are identifiers; `listingTitle` is plain text, 1–120 characters (no `<`, `>` or control characters) and is appended to the in-app body as `Tin: <title>.`. `LISTING_APPROVED`/`LISTING_REJECTED` keep accepting the legacy `{listingId}` payload. Every listing event opens `/dashboard/properties/view?id=<encodeURIComponent(listingId)>`; metadata holds `listingId` plus `editId` or `status` when present (never the title). Titles/bodies are fixed server-owned Vietnamese templates; `LISTING_STATUS_CHANGED` uses status-specific copy.
+Saved-listing alerts target active favoriters, excluding the listing owner and actor. `SAVED_LISTING_UNAVAILABLE` describes a public listing becoming unavailable and opens `/favorites`; unavailable listings are filtered from that page. `SAVED_LISTING_UPDATED` describes an actual approved change to publicly visible content and opens `/rent/<encoded listingId>`. Both accept only `{listingId, listingTitle?}` and keep metadata to `{listingId}`. Deploy the notification consumer before Core emits these new event types; older consumers reject unknown types.
+
+All listing events are category `LISTING`, priority `NORMAL`, v1 envelope unchanged. `data` accepts only the keys in the table above (no others, no producer URLs, reasons or private content). `listingId` and `editId` are identifiers; `listingTitle` is plain text, 1–120 characters (no `<`, `>` or control characters) and is appended to the in-app body as `Tin: <title>.`. `LISTING_APPROVED`/`LISTING_REJECTED` keep accepting the legacy `{listingId}` payload. Owner listing events open `/dashboard/properties/view?id=<encodeURIComponent(listingId)>`; metadata holds `listingId` plus `editId` or `status` when present (never the title). Titles/bodies are fixed server-owned Vietnamese templates; `LISTING_STATUS_CHANGED` uses status-specific copy.
 
 | Producer action (hs-core-api)                       | Event                    |
 | --------------------------------------------------- | ------------------------ |
