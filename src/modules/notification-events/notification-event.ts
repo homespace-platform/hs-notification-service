@@ -498,7 +498,8 @@ export interface NotificationEvent {
     | keyof typeof operationalTemplates
     | 'NEWS_PUBLISHED'
     | 'CHAT_ALERT_REQUESTED'
-    | 'PLATFORM_ANNOUNCEMENT';
+    | 'PLATFORM_ANNOUNCEMENT'
+    | 'ROLE_PERMISSIONS_CHANGED';
   version: 1;
   occurredAt: string;
   recipients: string[];
@@ -556,7 +557,8 @@ export function parseNotificationEvent(
         isComplaintType(input.eventType) || isOperationalType(input.eventType) ||
         input.eventType === 'NEWS_PUBLISHED' ||
         input.eventType === 'CHAT_ALERT_REQUESTED' ||
-        input.eventType === 'PLATFORM_ANNOUNCEMENT'
+        input.eventType === 'PLATFORM_ANNOUNCEMENT' ||
+        input.eventType === 'ROLE_PERMISSIONS_CHANGED'
       ) ||
       typeof input.occurredAt !== 'string' ||
       !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(input.occurredAt) ||
@@ -640,6 +642,13 @@ export function parseNotificationEvent(
     } else if (isAmendmentType(event.eventType) || isRenewalType(event.eventType) || isTerminationType(event.eventType) || isReturnSettlementType(event.eventType)) {
       if (event.recipients.length !== 1 || Object.keys(event.data).join(',') !== 'contractId' || !identifier(event.data.contractId))
         throw new InvalidNotificationEvent();
+    } else if (event.eventType === 'ROLE_PERMISSIONS_CHANGED') {
+      // Realtime permission-refresh signal; roleName is a role code, never free text.
+      if (
+        Object.keys(event.data).join(',') !== 'roleName' ||
+        typeof event.data.roleName !== 'string' ||
+        !/^[A-Z][A-Z0-9_]{0,49}$/.test(event.data.roleName)
+      ) throw new InvalidNotificationEvent();
     } else if (event.eventType === 'PLATFORM_ANNOUNCEMENT') {
       const keys = Object.keys(event.data).sort().join(',');
       const legacy = keys === 'body,title';
@@ -749,6 +758,16 @@ export function renderNotification(
       body: 'Có tin tức mới trên HomeSpace. Vui lòng mở để xem chi tiết.',
       actionPath: `/news/${encodeURIComponent(event.data.slug)}`,
       metadata: { newsId: event.data.newsId },
+    };
+  }
+  if (event.eventType === 'ROLE_PERMISSIONS_CHANGED') {
+    return {
+      ...common,
+      category: 'SYSTEM',
+      title: 'Quyền sử dụng tính năng đã thay đổi',
+      body: 'Quản trị viên vừa cập nhật quyền sử dụng tính năng cho tài khoản của bạn. Một số chức năng có thể đã được mở hoặc tạm khóa.',
+      actionPath: '/notifications',
+      metadata: { roleName: event.data.roleName },
     };
   }
   if (event.eventType === 'PLATFORM_ANNOUNCEMENT') {

@@ -116,6 +116,46 @@ describe('platform announcement contract', () => {
   });
 });
 
+describe('role permissions changed contract', () => {
+  const changed = { ...event, eventType: 'ROLE_PERMISSIONS_CHANGED', data: { roleName: 'PROPERTY_OWNER' } };
+
+  it('renders a generic SYSTEM notice and keeps roleName in metadata only', () => {
+    const rendered = renderNotification(parseNotificationEvent(encode(changed)), 'alice');
+    expect(rendered).toMatchObject({
+      category: 'SYSTEM', type: 'ROLE_PERMISSIONS_CHANGED', priority: 'NORMAL', recipientId: 'alice',
+      title: 'Quyền sử dụng tính năng đã thay đổi', actionPath: '/notifications',
+      metadata: { roleName: 'PROPERTY_OWNER' },
+    });
+    expect(`${rendered.title} ${rendered.body}`).not.toContain('PROPERTY_OWNER');
+  });
+
+  it('accepts 100 recipients', () => {
+    const recipients = Array.from({ length: 100 }, (_, i) => `u${i}`);
+    expect(parseNotificationEvent(encode({ ...changed, recipients })).recipients).toHaveLength(100);
+  });
+
+  it.each([
+    {},
+    { roleName: 'ADMIN', extra: 'x' },
+    { role: 'ADMIN' },
+    { roleName: 'admin' },
+    { roleName: '1ADMIN' },
+    { roleName: '_ADMIN' },
+    { roleName: 'A'.repeat(51) },
+    { roleName: 'ADMIN\n' },
+    { roleName: 'ADMIN-X' },
+    { roleName: 5 },
+  ])('rejects invalid data %j', (data) => {
+    expect(() => parseNotificationEvent(encode({ ...changed, data }))).toThrow('Invalid notification event');
+  });
+
+  it('rejects empty and oversized recipient lists', () => {
+    expect(() => parseNotificationEvent(encode({ ...changed, recipients: [] }))).toThrow('Invalid notification event');
+    expect(() => parseNotificationEvent(encode({ ...changed, recipients: Array.from({ length: 101 }, (_, i) => `u${i}`) })))
+      .toThrow('Invalid notification event');
+  });
+});
+
 describe('booking notification contract', () => {
   const bookingId = '2f89a556-7a9b-4865-aa9f-924531995bd2';
   const types = [

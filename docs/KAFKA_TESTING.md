@@ -18,6 +18,7 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | CHAT_MESSAGE_RECEIVED                                          | conversationId                 | CHAT        |
 | CHAT_ALERT_REQUESTED                                           | conversationId, messageId (only keys), exactly one recipient | CHAT |
 | PLATFORM_ANNOUNCEMENT                                          | title (1..200), body (1..2000); admin form also requires priority and actionPath | SYSTEM |
+| ROLE_PERMISSIONS_CHANGED                                       | roleName (only key, `^[A-Z][A-Z0-9_]{0,49}$`); 1..100 recipients; realtime permission-refresh signal, generic copy, `/notifications` | SYSTEM |
 | NEWS_PUBLISHED                                                 | newsId, slug (only keys)       | NEWS        |
 | ACCOUNT_ROLE_CHANGED, ACCOUNT_DISABLED, ACCOUNT_ENABLED        | none: `data` must be exactly `{}` | ACCOUNT  |
 | MEMBERSHIP_ACTIVATED, MEMBERSHIP_PAYMENT_REVIEW                | orderId (only key)             | PAYMENT     |
