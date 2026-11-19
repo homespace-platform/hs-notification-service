@@ -95,7 +95,7 @@ it('persists in-app despite enqueue outage, retries enqueue on replay, and emits
 
 describe.each(NOTIFICATION_CATEGORIES)('%s popup preference', (category) => {
   it.each(NOTIFICATION_PRIORITIES)(
-    'suppresses %s popups without losing feed, unread count or push work',
+    'suppresses %s popups while preserving delivery and category feed rules',
     async (priority) => {
       const { notifications, preferences, delivery, realtime, service } =
         setup();
@@ -110,12 +110,18 @@ describe.each(NOTIFICATION_CATEGORIES)('%s popup preference', (category) => {
         notification,
         false,
       );
-      expect(realtime.emitUnreadCount).toHaveBeenCalledWith('alice', 1);
+      if (category === 'CHAT') {
+        expect(realtime.emitUnreadCount).not.toHaveBeenCalled();
+      } else {
+        expect(realtime.emitUnreadCount).toHaveBeenCalledWith('alice', 1);
+      }
       expect(notifications.rows).toHaveLength(1);
-      expect((await service.getFeed('alice', {})).items).toEqual([
-        notification,
-      ]);
-      expect(await service.getUnreadCount('alice')).toEqual({ count: 1 });
+      expect((await service.getFeed('alice', {})).items).toEqual(
+        category === 'CHAT' ? [] : [notification],
+      );
+      expect(await service.getUnreadCount('alice')).toEqual({
+        count: category === 'CHAT' ? 0 : 1,
+      });
       expect(delivery.enqueue).toHaveBeenCalledWith(notification, 'alice');
       expect(notification).not.toHaveProperty('popupAllowed');
     },

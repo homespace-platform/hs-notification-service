@@ -1,0 +1,14 @@
+# Only build inputs enter the context; environment files and credentials stay out.
+**
+!package.json
+!package-lock.json
+!nest-cli.json
+!tsconfig.json
+!tsconfig.build.json
+!src/
+!src/**
+**/.env*
+**/*.pem
+**/*.key
+**/*service-account*.json
+**/*firebase-adminsdk*.json

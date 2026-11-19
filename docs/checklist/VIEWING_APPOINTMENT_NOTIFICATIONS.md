@@ -182,14 +182,14 @@ Route thật đã có:
 | Notification build/lint | `npm run build`, `npm run lint` đạt |
 | Kafka → MongoDB → REST thật | `npm run test:backend` đạt: 9 loại × 2 phía nhận, gửi lặp, route đúng và cô lập recipient; kèm các kiểm tra backend sẵn có |
 | Web | 16/16 focused tests, `npx tsc --noEmit`, ESLint các file liên quan đạt |
-| Infra | `docker compose -f docker-infra.yml config --quiet` đạt; đối chiếu topic/broker Core/consumer/infra local khớp, không log secrets |
+| Infra | `docker compose -f docker-compose.yml config --quiet` đạt; đối chiếu topic/broker Core/consumer/infra local khớp, không log secrets |
 | Browser hai tài khoản / push booking thật | Chưa chạy; các hàng “Chưa chạy” ở bảng mục 6 là browser/manual E2E |
 
 Test backend chỉ tạo topic riêng `homespace.notification.test.*` và dữ liệu dưới `homespace_notification_test`; push/realtime live bị tắt trong smoke này. Test Java publisher tạo topic riêng `homespace.notification.publisher.test.*` và đọc lại một event. PostgreSQL dùng DB mới `core_booking_notification_test_20261113_0255`, không dùng DB dev cho create-drop. Không phát booking notification tới người dùng thật trong đợt test tự động.
 
 ### Chạy và thử thủ công
 
-1. Áp dụng infra từ thư mục `hs-infra`: `docker compose -f docker-infra.yml up -d`. Đợi broker healthy và `hs-kafka-topics` exit 0. Lệnh này áp dụng cấu hình broker mới; không dùng `down -v`.
+1. Áp dụng infra từ thư mục `hs-infra`: `docker compose -f docker-compose.yml up -d`. Đợi broker healthy và `hs-kafka-topics` exit 0. Lệnh này áp dụng cấu hình broker mới; không dùng `down -v`.
 2. Restart Core và notification service; frontend dev nhận source mới. Core dev dùng JPA schema update hiện có để tạo bảng outbox mới; môi trường dùng `validate`/tắt DDL cần tạo schema qua quy trình migration trước khi chạy, không dùng create-drop trên dữ liệu thật.
 3. Core có các config mới: `KAFKA_EVENTS_TOPIC` (default topic đã dùng), `NOTIFICATION_OUTBOX_ENABLED=true`, `NOTIFICATION_OUTBOX_POLL_DELAY_MS=1000`. Dù publisher bị tắt, mutation vẫn ghi outbox để gửi sau; bật lại sẽ xử lý backlog. Broker/topic local đã khớp consumer, không cần thêm secret mới.
 4. Dùng A là chủ tin đăng, B là khách khác tài khoản. Tin đăng phải đang hiển thị, có ngày/khung giờ xem hợp lệ; B đáp ứng KYC hiện có. Mở dashboard lịch chủ nhà ở A và chi tiết tin ở B, bấm **Đặt lịch xem**.
