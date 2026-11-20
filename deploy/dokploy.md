@@ -11,7 +11,7 @@ Luồng triển khai: push `master` → GitHub Actions lint/test → build image
 
 ## 2. Kiểm tra hạ tầng trước
 
-MongoDB, Kafka, Discovery, Keycloak và Gateway phải đang chạy. Application này dùng chung overlay attachable `homespace-backend` với hạ tầng và Gateway.
+MongoDB, Kafka, Discovery, Keycloak và Gateway phải đang chạy. Application này dùng chung overlay attachable `hs-network` với hạ tầng và Gateway.
 
 Env đã chuẩn bị:
 
@@ -21,21 +21,21 @@ Env đã chuẩn bị:
 | `PORT` | `8085` |
 | `SERVICE_NAME` | `hs-notification-service`, đúng tên Gateway tìm trong Eureka |
 | `MONGODB_URI` | `mongodb:27017`, database riêng `homespace_notification`, authSource `admin`; credential lấy từ infra `.env.dokploy` |
-| `EUREKA_CLIENT_SERVICE_URL` | `http://homespace-homespacediscovery-mjtjv6:8761/eureka/`, tên service Discovery đã xác nhận trên server |
+| `EUREKA_CLIENT_SERVICE_URL` | `http://hs-discovery-server:8761/eureka/`, service name Discovery Compose trên `hs-network` |
 | `EUREKA_INSTANCE_HOSTNAME` | `localhost`: code tự tìm IPv4 của container để đăng ký Eureka |
 | `GATEWAY_INTERNAL_SECRET` | Giữ giá trị đang dùng ở Gateway production |
 | `KAFKA_BROKERS` | `kafka:19092`, listener nội bộ đã deploy |
 | `KAFKA_EVENTS_TOPIC` | `homespace.notification.events.v1`, khớp infra/Core |
 | `KAFKA_DLT_TOPIC` | `homespace.notification.events.dlt.v1` |
 | `KAFKA_GROUP_ID` | Giữ group hiện có; không đổi sau mỗi deployment |
-| `KEYCLOAK_ISSUER_URL` | `https://homespace-auth.nvminh162.id.vn/realms/homespace-platform` |
+| `KEYCLOAK_ISSUER_URL` | `https://auth.homespace.id.vn/realms/homespace-platform` |
 | `KEYCLOAK_AUDIENCE` | `hs-notification-service`, phải có trong access token |
-| `NOTIFICATION_REALTIME_ORIGINS` | `https://homespace.nvminh162.id.vn,https://homespace-admin.nvminh162.id.vn` |
+| `NOTIFICATION_REALTIME_ORIGINS` | `https://homespace.id.vn,https://admin.homespace.id.vn` |
 | `PUSH_ENABLED`, `FIREBASE_*` | Giữ cấu hình Firebase đang dùng, gồm private key |
 
 Dấu single quote trong `.env.dokploy` là cú pháp dotenv; dán nguyên nội dung vào Dokploy Environment. Private key được lưu trên một dòng với `\n`, provider đã hỗ trợ chuyển thành xuống dòng. Không dùng nguyên file này với `docker run --env-file` vì Docker CLI xử lý dấu quote khác dotenv.
 
-MongoDB phải có DNS alias `mongodb`, Kafka có alias `kafka` trên mạng chung. Tên hiển thị Application không tự tạo DNS alias. Nếu Discovery đã bị xóa/tạo lại, cập nhật URL bằng tên Swarm service hiện tại (`sudo docker service ls`).
+MongoDB phải có DNS `mongodb`, Kafka có DNS `kafka`, Discovery Compose có service name `hs-discovery-server` trên mạng chung. URL Eureka dùng DNS từ tên service trong YAML, không phụ thuộc tên Swarm/container sinh ngẫu nhiên. Tên hiển thị Application không tự tạo DNS alias.
 
 ## 3. Docker Hub và GitHub
 
@@ -63,7 +63,7 @@ Image được push với hai tag: `nvminh162/hs-notification-service:latest` v�
 
 4. Save. Với Docker provider, Dokploy pull image đã build; không cấu hình Nixpacks hay build source trên server.
 5. Environment → mở file `.env.dokploy` trên máy, copy toàn bộ, dán vào editor → **Save**.
-6. Advanced → Networks → chọn **`homespace-backend`** → Save. Giữ kết nối `dokploy-network` như Gateway/Core. Nếu UI chưa liệt kê mạng, kiểm tra đúng server và Refresh; không tạo lại hay xóa mạng đang chạy. Nếu có mục Swarm Settings → Network, chọn Target `homespace-backend` tại đó và Save.
+6. Advanced → Networks → chọn **`hs-network`** → Save. Giữ kết nối `dokploy-network` như Gateway/Core. Nếu UI chưa liệt kê mạng, kiểm tra đúng server và Refresh; không tạo lại hay xóa mạng đang chạy. Nếu có mục Swarm Settings → Network, chọn Target `hs-network` tại đó và Save.
 7. Advanced → Replicas: **1**. Realtime hiện chưa có shared Socket.IO adapter, nên không scale nhiều replica.
 8. Resources: khởi đầu memory limit **512 MiB** (`536870912` bytes), CPU limit **1** nếu cần. Theo dõi thực tế rồi điều chỉnh.
 9. Không cần volume hoặc domain riêng: MongoDB giữ dữ liệu, Gateway đang phục vụ REST và WebSocket. Không publish port `8085` ra host hoặc mở nó trong EC2 Security Group.
@@ -90,13 +90,13 @@ sudo docker service ls --format '{{.Name}} {{.Replicas}}' | grep -i notification
 Discovery dashboard phải có **HS-NOTIFICATION-SERVICE — UP**. Chờ Gateway cập nhật registry khoảng 30–60 giây.
 
 ```bash
-curl --fail --silent --show-error --max-time 10 https://homespace-api.nvminh162.id.vn/api/v1/notifications/ping
+curl --fail --silent --show-error --max-time 10 https://api.homespace.id.vn/api/v1/notifications/ping
 ```
 
 Kết quả `pong`. Lệnh này chứng minh đường Gateway → Eureka → Notification hoạt động. Healthcheck `/ping` trong image chỉ kiểm tra HTTP process, không chứng minh gửi Firebase thành công hay consumer không bị lag sau startup.
 
 ```bash
-curl --silent --output /dev/null --write-out 'HTTP %{http_code}\n' --max-time 10 https://homespace-api.nvminh162.id.vn/api/v1/notifications/feed
+curl --silent --output /dev/null --write-out 'HTTP %{http_code}\n' --max-time 10 https://api.homespace.id.vn/api/v1/notifications/feed
 ```
 
 Chưa đăng nhập phải trả `401`. Sau đó đăng nhập frontend, mở chuông thông báo; DevTools → Network kiểm tra `/api/v1/notifications/feed`, `/unread-count` trả 200 và WebSocket `/api/v1/notifications/socket.io/` upgrade 101. Socket dùng namespace `/notifications` và kiểm tra JWT/origin riêng.
