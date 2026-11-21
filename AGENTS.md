@@ -1,14 +1,12 @@
 # HomeSpace Notification Service — Agent Instructions
 
-<!-- BEGIN: HomeSpace engineering standards -->
-## HomeSpace engineering standards
+## Engineering standards
 
 - Preserve business invariants, public contracts and backward compatibility. Keep authentication, authorization, input validation and error handling intact.
 - Protect secrets and sensitive data in code, commits, tests, logs and reports. Treat third-party hooks as untrusted until reviewed and explicitly authorized.
 - Change production configuration, deploy or run destructive data operations only when explicitly authorized for the target environment.
 - Keep review tasks read-only unless the developer requests fixes.
 - Run targeted verification first. Broaden coverage when the risk or affected interfaces warrant it. Report checks that ran and any unverified behavior.
-<!-- END: HomeSpace engineering standards -->
 
 ## Scope
 
@@ -44,7 +42,7 @@ Do not read all docs for a small change. Treat `docs/memory.md`, if present, as 
 - Handle duplicate events idempotently: unique `(recipientId, sourceEventId)`.
 - Preserve offset semantics: commit only after all recipients are persisted, or after an invalid message is acknowledged by the DLT. Never commit in a way that silently loses an event.
 - Keep retry behavior bounded and keep the DLT payload redacted (source coordinates, reason code, payload hash only). Do not add message bodies, recipients or exception details to DLT records.
-- Do not add topic auto-creation or change topic names without checking the producers and `hs-infra` configuration.
+- Preserve topic names and the existing provisioning model. Before proposing topic auto-creation or a rename, compare the local topic settings with the producer contract in `docs/KAFKA_TESTING.md` and flag any producer or provisioning checks that need coordination.
 
 ## MongoDB
 
