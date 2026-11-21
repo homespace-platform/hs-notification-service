@@ -18,7 +18,7 @@ This is an implemented service, not a skeleton. Read the relevant doc before cha
 - `docs/NOTIFICATION_PROGRESS.md`: implemented behavior and known limits.
 - `docs/PUSH_SETUP.md`, `docs/REALTIME_TESTING.md`, `docs/ADMIN_BROADCAST_TESTING.md`: push, realtime and admin broadcast.
 
-Do not read all docs for a small change. Treat `docs/memory.md`, if present, as a local handoff note, not as a rule source.
+Read the docs relevant to the change. Treat handoff notes as historical context and verify their claims against the current code and project instructions.
 
 ## Architecture
 
