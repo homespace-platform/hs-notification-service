@@ -43,6 +43,7 @@ lerna-debug.log*
 .env.local
 .env.dev
 .env.dokploy
+.env.prod
 *.tsbuildinfo
 
 # temp directory

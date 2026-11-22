@@ -1,6 +1,6 @@
 # Browser push backend
 
-## Bắt đầu lần đầu — lưu toàn bộ service account vào env
+## Bắt đầu lần đầu — cấu hình service account cho local
 
 Làm lần lượt từng bước. Bạn có thể dừng sau mỗi bước; chưa cần bật push ngay.
 
@@ -24,7 +24,7 @@ Làm lần lượt từng bước. Bạn có thể dừng sau mỗi bước; ch�
 
 ### Bước 3: Nhận diện các trường trong JSON
 
-Mở file JSON bằng trình soạn thảo trên máy. Team điền toàn bộ các trường vào env một lần theo bảng dưới. Push hiện dùng `project_id`, `client_email`, `private_key`; các trường còn lại được lưu sẵn cho nhu cầu sau này.
+Mở file JSON bằng trình soạn thảo trên máy và điền đủ 11 trường vào env theo bảng dưới. Web Push hiện chỉ đọc `project_id`, `client_email` và `private_key`. Tám trường còn lại vẫn được cấu hình để lưu đủ bộ JSON và đáp ứng cấu hình Compose trên Dokploy.
 
 | Trường trong JSON | Biến trong Notification Service |
 |---|---|
@@ -63,7 +63,7 @@ FIREBASE_UNIVERSE_DOMAIN=
 
 Với các trường thông thường, điền giá trị từ JSON, bỏ dấu phẩy cuối dòng. Với private key, sao chép **toàn bộ chuỗi giá trị cùng cặp dấu ngoặc kép**, từ `"-----BEGIN PRIVATE KEY-----\n` tới `-----END PRIVATE KEY-----\n"`, đặt sau dấu `=`. Giữ nguyên các ký tự `\n`; bỏ dấu phẩy ở cuối dòng JSON. Không dán tên trường `"private_key":` vào env. Chưa đổi `PUSH_ENABLED` thành `true` ở bước này.
 
-Đây là toàn bộ **service-account JSON**, chưa bao gồm cấu hình Firebase Web/VAPID lấy từ màn hình khác khi tích hợp frontend. Khi tạo lại khóa, cập nhật `FIREBASE_PRIVATE_KEY_ID` và `FIREBASE_PRIVATE_KEY` cùng lần. Mỗi môi trường nên dùng thông tin của project tương ứng; team chia sẻ file mẫu, còn giá trị bí mật lưu ở `.env` riêng hoặc secret manager.
+Cấu hình Firebase Web/VAPID cho frontend lấy riêng trong Firebase Console. Mỗi môi trường nên dùng thông tin của project tương ứng. Giữ giá trị bí mật trong `.env` riêng hoặc secret manager. Với Dokploy, xem các biến bắt buộc trong [hướng dẫn triển khai](../deploy/dokploy.md).
 
 ### Bước 5: Kiểm tra Cloud Messaging
 

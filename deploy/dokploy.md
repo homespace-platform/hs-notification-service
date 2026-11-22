@@ -7,7 +7,7 @@ Luồng triển khai: push `master` → GitHub Actions lint/test → build image
 - `Dockerfile`: Node 24, build NestJS, runtime chỉ có production dependencies, chạy bằng user `node`, port `8085`, healthcheck `/ping`.
 - `.dockerignore`: chỉ đưa package manifests, cấu hình TypeScript và `src` vào build; loại `.env*`, key và credential files.
 - `.github/workflows/publish-image.yml`: lint, unit tests, Docker build; chỉ push image khi chạy trên `master`, không push từ pull request.
-- `.env.dokploy`: file riêng tư đã tạo trên máy, bị Git ignore. Dán vào Dokploy, không đưa vào GitHub hoặc Docker Hub.
+- `.env.prod`: file riêng tư đã tạo trên máy, bị Git ignore. Dán vào Dokploy, không đưa vào GitHub hoặc Docker Hub.
 - `compose.production.yml`: service `hs-notification-service`, image từ `${NOTIFICATION_IMAGE:?}`, memory limit 512 MiB, tự tham gia external `hs-network`. Không có fallback, host port hoặc volume; healthcheck kế thừa từ image. Chạy một instance, không cần alias hoặc Advanced → Networks.
 
 ## 2. Kiểm tra hạ tầng trước
@@ -18,11 +18,11 @@ Env đã chuẩn bị:
 
 | Biến | Giá trị production / nguồn |
 | --- | --- |
-| `NOTIFICATION_IMAGE` | `nvminh162/hs-notification-service:latest`, đặt ở dòng đầu `.env.dokploy`; chỉ dùng để chọn image |
+| `NOTIFICATION_IMAGE` | `nvminh162/hs-notification-service:latest`, đặt ở dòng đầu `.env.prod`; chỉ dùng để chọn image |
 | `NODE_ENV` | `production` |
 | `PORT` | `8085` |
 | `SERVICE_NAME` | `hs-notification-service`, đúng tên Gateway tìm trong Eureka |
-| `MONGODB_URI` | `mongodb:27017`, database riêng `homespace_notification`, authSource `admin`; credential lấy từ infra `.env.dokploy` |
+| `MONGODB_URI` | `mongodb:27017`, database riêng `homespace_notification`, authSource `admin`; credential lấy từ infra `.env.prod` |
 | `EUREKA_CLIENT_SERVICE_URL` | `http://hs-discovery-server:8761/eureka/`, service name Discovery Compose trên `hs-network` |
 | `EUREKA_INSTANCE_HOSTNAME` | `hs-notification-service`: DNS từ tên service Compose trên mạng chung |
 | `GATEWAY_INTERNAL_SECRET` | Giữ giá trị đang dùng ở Gateway production |
@@ -35,9 +35,9 @@ Env đã chuẩn bị:
 | `NOTIFICATION_REALTIME_ORIGINS` | `https://homespace.id.vn,https://admin.homespace.id.vn` |
 | `PUSH_ENABLED`, `FIREBASE_*` | Giữ cấu hình Firebase đang dùng, gồm private key |
 
-Dấu single quote trong `.env.dokploy` là cú pháp dotenv; dán nguyên nội dung vào Dokploy Environment. Private key được lưu trên một dòng với `\n`, provider đã hỗ trợ chuyển thành xuống dòng. Không dùng nguyên file này với `docker run --env-file` vì Docker CLI xử lý dấu quote khác dotenv.
+Dấu single quote trong `.env.prod` là cú pháp dotenv; dán nguyên nội dung vào Dokploy Environment. Private key được lưu trên một dòng với `\n`, provider đã hỗ trợ chuyển thành xuống dòng. Không dùng nguyên file này với `docker run --env-file` vì Docker CLI xử lý dấu quote khác dotenv.
 
-Compose yêu cầu biến image và đủ 30 biến runtime trong `.env.dokploy` bằng `${VARIABLE:?}`: thiếu hoặc rỗng sẽ báo lỗi. Giữ nguyên `.env` và `.env.example` dành cho dev; không thêm biến image vào hai file đó.
+Compose yêu cầu biến image và đủ 30 biến runtime trong `.env.prod` bằng `${VARIABLE:?}`: thiếu hoặc rỗng sẽ báo lỗi. Giữ nguyên `.env` và `.env.example` dành cho dev; không thêm biến image vào hai file đó.
 
 MongoDB phải có DNS `mongodb`, Kafka có DNS `kafka`, Discovery Compose có service name `hs-discovery-server` trên mạng chung. URL Eureka dùng DNS từ tên service trong YAML, không phụ thuộc tên container sinh ngẫu nhiên. Tên hiển thị trên Dokploy không thay thế tên service trong YAML.
 
@@ -48,7 +48,7 @@ MongoDB phải có DNS `mongodb`, Kafka có DNS `kafka`, Discovery Compose có s
 3. Thêm hoặc cấp quyền dùng hai org secrets:
    - `DOCKERHUB_USERNAME`: tài khoản có quyền push vào namespace `nvminh162`.
    - `DOCKERHUB_TOKEN`: Docker Hub access token có quyền Read & Write.
-4. Review rồi commit/push các file deploy mới lên `master`. Giữ `.env.dokploy` ngoài commit. Không gộp file checklist đang có thay đổi local vào commit deploy nếu chưa review.
+4. Review rồi commit/push các file deploy mới lên `master`. Giữ `.env.prod` ngoài commit. Không gộp file checklist đang có thay đổi local vào commit deploy nếu chưa review.
 5. GitHub → Actions → **Build and publish Notification Service** → chờ thành công. Workflow cũng có nút Run workflow để chạy lại trên `master`.
 
 Image được push với hai tag: `nvminh162/hs-notification-service:latest` và tag Git SHA để rollback. Không cần Firebase/MongoDB/Kafka secrets trong GitHub Actions, và không cần `DOKPLOY_DEPLOY_WEBHOOK` ở GitHub.
@@ -58,7 +58,7 @@ Image được push với hai tag: `nvminh162/hs-notification-service:latest` v�
 1. Nếu đang có Application Notification cũ, lưu lại cấu hình, domain và webhook rồi Stop trước khi chạy Compose mới; không chạy hai bản song song. Giữ nguyên infra và dữ liệu.
 2. Projects → **homespace → production → Create Service → Docker Compose**, tên `hs-notification-service`, cùng server với infra.
 3. General → Provider **Raw**, dán toàn bộ [compose.production.yml](../compose.production.yml), chọn Compose Type **Docker Compose**, không chọn Stack → **Save**. Image đã được GitHub Actions build; không cấu hình Nixpacks.
-4. **Environment**: dán đầy đủ `.env.dokploy`, có `NOTIFICATION_IMAGE` ở dòng đầu → **Save**. File local không tự cập nhật Dokploy.
+4. **Environment**: dán đầy đủ `.env.prod`, có `NOTIFICATION_IMAGE` ở dòng đầu → **Save**. File local không tự cập nhật Dokploy.
 5. **Preview Compose** phải có service `hs-notification-service`, đúng image và default network external `hs-network`. Giữ tắt Isolated Deployment và xác nhận Preview vẫn giữ mạng chung; không cần chỉnh Advanced → Networks. Không publish cổng `8085` ra host.
 6. **Domains**: web đang dùng `NEXT_PUBLIC_NOTIFICATION_SOCKET_URL=https://notification.homespace.id.vn`. Thêm domain `notification.homespace.id.vn`, **Service Name `hs-notification-service`**, Container Port **8085**, Path `/`, Internal Path `/`, Strip Path **tắt**, HTTPS **bật**, Certificate Provider **Let's Encrypt**. Gỡ route trùng khỏi Application cũ trước khi thêm. DNS origin trỏ về EC2; nếu giữ proxy OneShield thì origin HTTPS phải hoạt động. Admin vẫn dùng WebSocket qua Gateway.
 7. **Deploy** sau khi đã Save env/domain. Chờ container healthy; Logs cần có `Registered ... with Eureka`, không có lỗi MongoDB/Kafka/configuration. Mỗi lần sửa domain cần redeploy Compose.
