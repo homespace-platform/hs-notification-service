@@ -15,13 +15,14 @@ const event = (type = types[0], overrides: Record<string, unknown> = {}) => ({
 const withKind = (type: string, agreementKind: unknown, id: unknown = agreementId) => event(type, { data: { agreementId: id, agreementKind } });
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));
 const parse = (value: unknown) => parseNotificationEvent(encode(value));
-const routeFor = (_kind: string, id = agreementId) => `/dashboard/contracts/${encodeURIComponent(id)}`;
+const routeFor = (kind: string, id = agreementId) => `/dashboard/contracts/${encodeURIComponent(id)}?tab=${kind === 'EARLY_EXIT' ? 'end' : 'sign'}`;
+const priorityOf = (type: string) => type === 'AGREEMENT_FULLY_SIGNED' ? 'NORMAL' : 'HIGH';
 const copy = (type: string) => { const r = renderNotification(parse(event(type)), 'p'); return `${r.title} ${r.body}`; };
 
 describe('agreement signing notification acceptance', () => {
-  it.each(matrix)('%s/%s renders CONTRACT/NORMAL with exact metadata and the fixed route', (type, kind) => {
+  it.each(matrix)('%s/%s renders CONTRACT with exact metadata, priority and the kind-specific tab route', (type, kind) => {
     const rendered = renderNotification(parse(withKind(type, kind)), 'stored-party');
-    expect(rendered).toMatchObject({ type, category: 'CONTRACT', priority: 'NORMAL', recipientId: 'stored-party',
+    expect(rendered).toMatchObject({ type, category: 'CONTRACT', priority: priorityOf(type), recipientId: 'stored-party',
       sourceEventId: 'agreement-event-1', actionPath: routeFor(kind), metadata: { agreementId, agreementKind: kind } });
     expect(Object.keys(rendered.metadata ?? {}).sort()).toEqual(['agreementId', 'agreementKind']);
     expect(rendered.title.length).toBeGreaterThan(0); expect(rendered.body.length).toBeGreaterThan(0);
@@ -34,7 +35,16 @@ describe('agreement signing notification acceptance', () => {
     });
 
   it('encodes the id without any workflow suffix', () => {
-    expect(renderNotification(parse(withKind(types[1], 'AMENDMENT', 'a_b-1')), 'p').actionPath).toBe('/dashboard/contracts/a_b-1');
+    expect(renderNotification(parse(withKind(types[1], 'AMENDMENT', 'a_b-1')), 'p').actionPath).toBe('/dashboard/contracts/a_b-1?tab=sign');
+  });
+
+  it.each([['LEASE', 'Hợp đồng thuê'], ['DEPOSIT', 'Hợp đồng đặt cọc'], ['AMENDMENT', 'Phụ lục điều chỉnh'], ['RENEWAL', 'Văn bản gia hạn'],
+    ['EARLY_EXIT', 'Phụ lục chấm dứt sớm']])('names the %s document with the unified vocabulary', (kind, label) => {
+    for (const type of types) {
+      const { title, body } = renderNotification(parse(withKind(type, kind)), 'p');
+      expect(`${title} ${body}`.toLowerCase()).toContain(label.toLowerCase());
+    }
+    expect(renderNotification(parse(withKind(types[1], 'DEPOSIT')), 'p').body).not.toMatch(/Hợp đồng thuê/);
   });
 
   it('rejects the removed MOVE_IN kind for every type', () => {
@@ -76,9 +86,10 @@ describe('agreement signing notification acceptance', () => {
     for (const type of types) expect(copy(type)).not.toMatch(/\d|VND|tiền|hợp lệ|thử lại|bị chặn|có hiệu lực/);
     expect(copy('AGREEMENT_REVIEW_READY')).toMatch(/có thể cần bạn xem xét/);
     expect(copy('AGREEMENT_REVIEW_READY')).not.toMatch(/PDF|sẵn sàng ký|có thể ký/);
-    expect(copy('AGREEMENT_SIGNING_TURN')).toMatch(/hoàn tất phần của họ/);
-    expect(copy('AGREEMENT_SIGNING_TURN')).not.toMatch(/xác minh|chữ ký số/);
+    expect(copy('AGREEMENT_SIGNING_TURN')).toMatch(/đến lượt bạn ký số/i);
+    expect(copy('AGREEMENT_SIGNING_TURN')).not.toMatch(/xác minh/);
     expect(copy('AGREEMENT_FULLY_SIGNED')).toMatch(/đã được xác minh hoàn tất/);
+    expect(copy('AGREEMENT_FULLY_SIGNED')).toMatch(/chữ ký số/);
     expect(copy('AGREEMENT_FULLY_SIGNED')).toMatch(/không xác nhận nội dung đã được áp dụng/);
     expect(copy('AGREEMENT_SIGNATURE_NEEDS_REVIEW')).toMatch(/cần được kiểm tra/);
     expect(copy('AGREEMENT_SIGNATURE_NEEDS_REVIEW')).toMatch(/liên hệ bộ phận hỗ trợ/);

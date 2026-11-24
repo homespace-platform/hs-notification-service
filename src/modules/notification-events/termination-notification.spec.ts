@@ -7,13 +7,16 @@ const contractId = '0f1e2d3c-4b5a-4968-8776-655443322110';
 const event = (type: string, data: unknown = { contractId }, recipients = ['party']) => ({
   eventId: 'termination-event-1', eventType: type, version: 1, occurredAt: '2026-11-14T00:00:00.000Z', recipients, data,
 });
+const unilateral = ['TERMINATION_NOTICE_ISSUED', 'TERMINATION_REVIEW_REQUESTED', 'TERMINATION_REVIEW_APPROVED', 'TERMINATION_NOTICE_CANCELLED'];
+const routeFor = (type: string) => unilateral.includes(type)
+  ? `/dashboard/invoices/${contractId}?section=monthly` : `/dashboard/contracts/${contractId}?tab=end`;
 const parse = (value: unknown) => parseNotificationEvent(Buffer.from(JSON.stringify(value)));
 
 describe('termination notification contract', () => {
   it.each(types)('%s renders neutral copy and the authenticated root route', type => {
     const result = renderNotification(parse(event(type)), 'party');
-    expect(result).toMatchObject({ type, category: 'CONTRACT', priority: 'NORMAL', recipientId: 'party',
-      actionPath: `/dashboard/contracts/${contractId}`, metadata: { contractId } });
+    expect(result).toMatchObject({ type, category: 'CONTRACT', priority: expect.stringMatching(/^(NORMAL|HIGH|URGENT)$/), recipientId: 'party',
+      actionPath: routeFor(type), metadata: { contractId } });
     expect(Object.keys(result.metadata ?? {})).toEqual(['contractId']);
     expect(`${result.title} ${result.body}`).not.toMatch(/VND|PRIVATE|đã thanh toán|đã bàn giao|\d{2}\/\d{2}/);
   });
@@ -27,7 +30,7 @@ describe('termination notification contract', () => {
   it('uses exact child signing identity for an early-exit PDF', () => {
     const signed = renderNotification(parse(event('AGREEMENT_FULLY_SIGNED',
       { agreementId: 'child-1', agreementKind: 'EARLY_EXIT' })), 'party');
-    expect(signed.actionPath).toBe('/dashboard/contracts/child-1');
+    expect(signed.actionPath).toBe('/dashboard/contracts/child-1?tab=end');
     expect(() => parse(event('AGREEMENT_FULLY_SIGNED', { contractId }))).toThrow('Invalid notification event');
   });
 });

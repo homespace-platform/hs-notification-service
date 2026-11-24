@@ -8,10 +8,10 @@ const event = (type: string, data: unknown = { contractId }, recipients = ['part
 const parse = (value: unknown) => parseNotificationEvent(Buffer.from(JSON.stringify(value)));
 
 describe('amendment notification contract', () => {
-  it.each(types)('%s renders a neutral root-contract link with exact metadata', type => {
+  it.each(types)('%s renders a neutral root-contract tab link with exact metadata', type => {
     const result = renderNotification(parse(event(type)), 'party');
     expect(result).toMatchObject({ type, category: 'CONTRACT', priority: 'NORMAL', recipientId: 'party',
-      actionPath: `/dashboard/contracts/${contractId}`, metadata: { contractId } });
+      actionPath: `/dashboard/contracts/${contractId}?tab=${type === 'AMENDMENT_APPLIED' ? 'content' : 'end'}`, metadata: { contractId } });
     expect(Object.keys(result.metadata ?? {})).toEqual(['contractId']);
     expect(`${result.title} ${result.body}`).not.toMatch(/VND|PRIVATE|chữ ký hợp lệ|đã thanh toán|\d{2}\/\d{2}/);
   });
@@ -24,6 +24,6 @@ describe('amendment notification contract', () => {
 
   it('retains review-ready on the exact amendment signing child', () => {
     expect(renderNotification(parse(event('AGREEMENT_REVIEW_READY', { agreementId: 'child-1', agreementKind: 'AMENDMENT' })), 'party')
-      .actionPath).toBe('/dashboard/contracts/child-1');
+      .actionPath).toBe('/dashboard/contracts/child-1?tab=sign');
   });
 });

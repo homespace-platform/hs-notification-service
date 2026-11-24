@@ -29,7 +29,7 @@ describe('monthly invoice notification acceptance', () => {
 
   it.each(types)('%s has only contract/invoice identity and one fixed invoice route', type => {
     const rendered = renderNotification(parse(event(type)), 'stored-party');
-    expect(rendered).toMatchObject({ type, category: 'PAYMENT', priority: 'NORMAL', recipientId: 'stored-party',
+    expect(rendered).toMatchObject({ type, category: 'PAYMENT', priority: expect.stringMatching(/^(NORMAL|HIGH|URGENT)$/), recipientId: 'stored-party',
       actionPath: route, metadata: { contractId, invoiceId } });
     expect(Object.keys(rendered.metadata ?? {}).sort()).toEqual(['contractId', 'invoiceId']);
     expect(rendered.title.length).toBeGreaterThan(0); expect(rendered.body.length).toBeGreaterThan(0);

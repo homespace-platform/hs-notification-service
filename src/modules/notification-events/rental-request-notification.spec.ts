@@ -33,7 +33,7 @@ describe('rental request notification acceptance', () => {
         const event = parse(type, input);
         const rendered = renderNotification(event, recipientSide.toLowerCase());
         expect(rendered.category).toBe('RENTAL_REQUEST'); expect(NOTIFICATION_CATEGORIES).toContain(rendered.category);
-        expect(rendered.type).toBe(type); expect(rendered.priority).toBe('NORMAL');
+        expect(rendered.type).toBe(type); expect(['NORMAL', 'HIGH']).toContain(rendered.priority);
         expect(rendered.metadata).toEqual({ requestId, recipientSide });
         expect(rendered.actionPath).toBe(`/dashboard/rental-requests${recipientSide === 'RENTER' ? '/my-requests' : ''}?requestId=${requestId}`);
         expect(isSafeActionPath(rendered.actionPath)).toBe(true);

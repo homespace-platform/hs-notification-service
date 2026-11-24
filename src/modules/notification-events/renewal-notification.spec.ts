@@ -11,7 +11,7 @@ describe('renewal notification contract', () => {
   it.each(types)('%s renders minimal root identity and a fixed authenticated route', type => {
     const result = renderNotification(parse(event(type)), 'party');
     expect(result).toMatchObject({ type, category: 'CONTRACT', priority: 'NORMAL', recipientId: 'party',
-      actionPath: `/dashboard/contracts/${contractId}`, metadata: { contractId } });
+      actionPath: `/dashboard/contracts/${contractId}?tab=end`, metadata: { contractId } });
     expect(Object.keys(result.metadata ?? {})).toEqual(['contractId']);
     expect(`${result.title} ${result.body}`).not.toMatch(/VND|PRIVATE|đã thanh toán|\d{2}\/\d{2}/);
   });
@@ -24,7 +24,7 @@ describe('renewal notification contract', () => {
 
   it('review-ready accepts a renewal child; no root decision payload can impersonate a signing event', () => {
     expect(renderNotification(parse(event('AGREEMENT_REVIEW_READY', { agreementId: 'child-1', agreementKind: 'RENEWAL' })), 'party')
-      .actionPath).toBe('/dashboard/contracts/child-1');
+      .actionPath).toBe('/dashboard/contracts/child-1?tab=sign');
     expect(() => parse(event('AGREEMENT_REVIEW_READY', { contractId }))).toThrow('Invalid notification event');
   });
 });

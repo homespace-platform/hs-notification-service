@@ -14,8 +14,10 @@ const dataFor = (type: string, id = resourceId) => type === paymentType ? { paym
 const routeFor = (type: string, id = resourceId) => type === paymentType
   ? `/dashboard/payments?paymentId=${encodeURIComponent(id)}`
   : ['LEASE_RETURN_CONFIRMED', 'LEASE_RETURN_COMPLETED'].includes(type)
-    ? `/dashboard/contracts/${encodeURIComponent(id)}`
+    ? `/dashboard/contracts/${encodeURIComponent(id)}?tab=end`
     : `/dashboard/invoices/${encodeURIComponent(id)}?section=deposit`;
+const priorityOf = (type: string) => ['SETTLEMENT_PAYMENT_OVERDUE', paymentType].includes(type) ? 'URGENT'
+  : ['SETTLEMENT_RESPONSE_NEEDED', 'SETTLEMENT_RESPONSE_OVERDUE'].includes(type) ? 'HIGH' : 'NORMAL';
 const event = (type: string, overrides: Record<string, unknown> = {}) => ({
   eventId: 'return-settlement-event-1', eventType: type, version: 1, occurredAt: '2026-11-14T00:00:00.000Z',
   recipients: ['stored-party'], data: dataFor(type), ...overrides,
@@ -27,7 +29,7 @@ const rendered = (type: string) => renderNotification(parse(event(type)), 'store
 describe('return, settlement and obligation deadline contract', () => {
   it.each(types)('%s has exact identity, category and fixed authorized route', type => {
     const result = rendered(type);
-    expect(result).toMatchObject({ type, category: type === paymentType ? 'PAYMENT' : 'CONTRACT', priority: 'NORMAL',
+    expect(result).toMatchObject({ type, category: type === paymentType ? 'PAYMENT' : 'CONTRACT', priority: priorityOf(type),
       recipientId: 'stored-party', sourceEventId: 'return-settlement-event-1',
       actionPath: routeFor(type), metadata: dataFor(type) });
     expect(Object.keys(result.metadata ?? {})).toEqual([type === paymentType ? 'paymentId' : 'contractId']);
@@ -82,9 +84,9 @@ describe('return, settlement and obligation deadline contract', () => {
   it.each([
     ['PAYMENT_REQUEST_CREATED', { paymentId: resourceId }, `/dashboard/payments?paymentId=${resourceId}`],
     ['INVOICE_ISSUED', { contractId: resourceId, invoiceId: 'bill-1' }, `/dashboard/invoices/${resourceId}?section=monthly&invoice=bill-1`],
-    ['TERMINATION_ENDED', { contractId: resourceId }, `/dashboard/contracts/${resourceId}`],
-    ['LEASE_EXPIRED', { contractId: resourceId }, `/dashboard/contracts/${resourceId}`],
-    ['AGREEMENT_FULLY_SIGNED', { agreementId: 'exact-child', agreementKind: 'EARLY_EXIT' }, '/dashboard/contracts/exact-child'],
+    ['TERMINATION_ENDED', { contractId: resourceId }, `/dashboard/contracts/${resourceId}?tab=end`],
+    ['LEASE_EXPIRED', { contractId: resourceId }, `/dashboard/contracts/${resourceId}?tab=end`],
+    ['AGREEMENT_FULLY_SIGNED', { agreementId: 'exact-child', agreementKind: 'EARLY_EXIT' }, '/dashboard/contracts/exact-child?tab=end'],
   ])('preserves previous family %s identity and route', (type, data, path) => {
     expect(renderNotification(parse(event(type as string, { data })), 'stored-party'))
       .toMatchObject({ actionPath: path, metadata: data });
@@ -100,7 +102,7 @@ describe('return, settlement and obligation deadline contract', () => {
 
   it('limits closure copy to the deposit-settlement record, including zero-transfer closure', () => {
     const closed = rendered('LEASE_CLOSED');
-    expect(closed.title).toBe('Hồ sơ quyết toán cọc đã đóng');
+    expect(closed.title).toBe('Hồ sơ hoàn cọc đã đóng');
     expect(closed.body).toContain('không xác nhận các khoản hoàn tiền thuê hoặc công nợ độc lập đã hoàn tất');
     expect(closed.title).not.toMatch(/đã nhận|đã thanh toán|tất cả|hợp đồng/);
   });

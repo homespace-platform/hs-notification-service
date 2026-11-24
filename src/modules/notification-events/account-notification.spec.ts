@@ -18,7 +18,7 @@ describe('account notifications: strict contract and delivery boundaries', () =>
     const parsed = parseNotificationEvent(encode(event(type)));
     const notice = renderNotification(parsed, parsed.recipients[0]);
     expect(notice).toMatchObject({ recipientId: 'affected-user', sourceEventId: 'account-transition-1',
-      category: 'ACCOUNT', type, priority: 'NORMAL', actionPath: '/settings/account-security' });
+      category: 'ACCOUNT', type, priority: type === 'ACCOUNT_DISABLED' ? 'URGENT' : 'NORMAL', actionPath: '/settings/account-security' });
     expect(notice.metadata).toBeUndefined();
     expect(notice.title.length).toBeGreaterThan(5); expect(notice.body.length).toBeGreaterThan(10);
     expect(notice.body).not.toMatch(/ADMIN|RENTER|OWNER|@|roleId|quản trị viên/);

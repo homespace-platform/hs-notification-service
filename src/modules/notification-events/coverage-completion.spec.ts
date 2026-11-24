@@ -7,7 +7,7 @@ const cases: [string,Record<string,string>,string,string][] = [
   ...['MEMBERSHIP_EXPIRING_SOON','MEMBERSHIP_EXPIRED'].map(type=>[type,{},'PAYMENT','/dashboard/membership'] as [string,Record<string,string>,string,string]),
   ['PAYMENT_DUE_SOON',{paymentId:'payment-1'},'PAYMENT','/dashboard/payments?paymentId=payment-1'],
   ...['INVOICE_METER_REMINDER','INVOICE_PAYMENT_REMINDER'].map(type=>[type,{contractId:'lease-1',invoiceId:'invoice-1'},'PAYMENT','/dashboard/invoices/lease-1?section=monthly&invoice=invoice-1'] as [string,Record<string,string>,string,string]),
-  ...['TERMINATION_APPROVED','LEASE_RENEWAL_WINDOW_OPENED'].map(type=>[type,{contractId:'lease-1'},'CONTRACT','/dashboard/contracts/lease-1'] as [string,Record<string,string>,string,string]),
+  ...['TERMINATION_APPROVED','LEASE_RENEWAL_WINDOW_OPENED'].map(type=>[type,{contractId:'lease-1'},'CONTRACT','/dashboard/contracts/lease-1?tab=end'] as [string,Record<string,string>,string,string]),
   ['BOOKING_REMINDER',{bookingId:'booking-1',recipientSide:'RENTER'},'APPOINTMENT','/dashboard/viewing-schedules/my-bookings?appointmentId=booking-1'],
   ...complaints.flatMap(type=>['PARTY','ADMIN'].map(audience=>[type,{caseId:'case-1',rentalRequestId:'rental-1',audience},'RENTAL_REQUEST',audience==='ADMIN'?'/operations/complaints?caseId=case-1':'/dashboard/complaints?requestId=rental-1&complaintId=case-1'] as [string,Record<string,string>,string,string])),
   ...['SYSTEM_INCIDENT_OPENED','SYSTEM_INCIDENT_RESOLVED'].map(type=>[type,{incidentId:'incident-1',component:'BLOCKCHAIN'},'SYSTEM','/operations/system-alerts?incidentId=incident-1'] as [string,Record<string,string>,string,string]),

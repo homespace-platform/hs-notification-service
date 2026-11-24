@@ -6,6 +6,23 @@ import type {
 import { isSafeActionPath } from '../notification/domain/notification-content';
 
 // Neutral copy: every type can reach either side; producer sends no reason/date/amount.
+// Contract detail landing (/dashboard/contracts/{id}) keeps ?tab= and resolves the viewer's side itself.
+const contractPath = (id: string, tab: string) => `/dashboard/contracts/${encodeURIComponent(id)}?tab=${tab}`;
+const settlementPath = (id: string) => `/dashboard/invoices/${encodeURIComponent(id)}?section=deposit`;
+// Unilateral termination notices are handled on the overdue invoice (monthly section), not in the end tab.
+const unilateralTypes = new Set(['TERMINATION_NOTICE_ISSUED', 'TERMINATION_REVIEW_REQUESTED', 'TERMINATION_REVIEW_APPROVED', 'TERMINATION_NOTICE_CANCELLED']);
+
+// Display-only urgency (no delivery/preference effect): overdue/blocked = URGENT, due/signing/response needed = HIGH.
+const priorities: Record<string, NotificationPriority> = {
+  PAYMENT_OBLIGATION_OVERDUE: 'URGENT', PAYMENT_OVERDUE: 'URGENT', INVOICE_OVERDUE: 'URGENT', SETTLEMENT_PAYMENT_OVERDUE: 'URGENT',
+  TERMINATION_NOTICE_ISSUED: 'URGENT', ACCOUNT_DISABLED: 'URGENT', SYSTEM_INCIDENT_OPENED: 'URGENT',
+  PAYMENT_DUE_SOON: 'HIGH', PAYMENT_REFUND_AUTO_CONFIRM_SOON: 'HIGH', PAYMENT_RECEIPT_AUTO_CONFIRM_SOON: 'HIGH', PAYMENT_RECEIPT_AUTO_CONFIRMED: 'HIGH', AGREEMENT_SIGNING_DUE_SOON: 'HIGH', PAYMENT_REQUEST_CREATED: 'HIGH', PAYMENT_TRANSFER_REPORTED: 'HIGH',
+  INVOICE_PAYMENT_REMINDER: 'HIGH', INVOICE_METER_REMINDER: 'HIGH', INVOICE_ISSUED: 'HIGH', INVOICE_OVERDUE_ACTION_REQUIRED: 'HIGH',
+  AGREEMENT_REVIEW_READY: 'HIGH', AGREEMENT_SIGNING_TURN: 'HIGH', AGREEMENT_SIGNATURE_NEEDS_REVIEW: 'HIGH', CONTRACT_AWAITING_SIGNATURE: 'HIGH',
+  SETTLEMENT_RESPONSE_NEEDED: 'HIGH', SETTLEMENT_RESPONSE_OVERDUE: 'HIGH', TERMINATION_REVIEW_REQUESTED: 'HIGH',
+  RENTAL_DEFAULT_NOTICE_ISSUED: 'HIGH', KYC_RETRY_REQUIRED: 'HIGH',
+};
+
 const rental = (title: string, body: string) =>
   ['RENTAL_REQUEST', title, body, 'requestId'] as const;
 
@@ -232,6 +249,18 @@ const isAccountType = (value: string): value is keyof typeof accountTemplates =>
 // A reported transfer, a routed dispute or a created request never implies a confirmed receipt or a payable window.
 const paymentTemplates = {
   PAYMENT_DUE_SOON: ['Sắp đến hạn thanh toán', 'Một nghĩa vụ thanh toán sắp đến hạn. Vui lòng mở hồ sơ để kiểm tra trạng thái và các bước hiện có.'],
+  PAYMENT_RECEIPT_AUTO_CONFIRM_SOON: [
+    'Sắp tự động xác nhận đã nhận tiền',
+    'Bạn chưa xác nhận hoặc từ chối khoản chuyển khoản đã được báo. Nếu bạn không xác nhận hoặc từ chối theo hạn xử lý của khoản này (và không có khiếu nại đang mở), hệ thống sẽ tự xác nhận thay bạn là đã nhận tiền. Vui lòng kiểm tra tài khoản và xác nhận hoặc từ chối ngay.',
+  ],
+  PAYMENT_RECEIPT_AUTO_CONFIRMED: [
+    'Hệ thống đã xác nhận thay bạn',
+    'Bạn không xác nhận khoản chuyển khoản đã được báo trước hạn nên hệ thống đã xác nhận thay bạn là đã nhận tiền. Nếu tiền chưa về tài khoản, bạn có thể mở khiếu nại kèm bằng chứng.',
+  ],
+  PAYMENT_REFUND_AUTO_CONFIRM_SOON: [
+    'Sắp tự động xác nhận hoàn tiền',
+    'Chủ nhà đã báo chuyển khoản hoàn tiền cho bạn. Nếu bạn không phản hồi theo hạn xử lý của khoản này (và không có khiếu nại đang mở), hệ thống sẽ tự xác nhận là đã nhận tiền. Vui lòng kiểm tra tài khoản và xác nhận hoặc từ chối.',
+  ],
   PAYMENT_REQUEST_CREATED: [
     'Có khoản thanh toán mới',
     'Một khoản thanh toán mới đã được tạo cho bạn. Vui lòng mở danh sách thanh toán để xem chi tiết và trạng thái hiện tại.',
@@ -242,11 +271,11 @@ const paymentTemplates = {
   ],
   PAYMENT_TRANSFER_REPORTED: [
     'Có khoản chuyển tiền cần xác nhận',
-    'Bên chuyển đã báo đã chuyển một khoản thanh toán. Đây chưa phải xác nhận đã nhận tiền; vui lòng kiểm tra tài khoản của bạn rồi xác nhận hoặc từ chối trong danh sách thanh toán.',
+    'Bên chuyển đã báo đã chuyển một khoản thanh toán. Đây chưa phải xác nhận đã nhận tiền; vui lòng kiểm tra tài khoản của bạn rồi xác nhận hoặc từ chối trong danh sách thanh toán. Nếu bạn không xác nhận hoặc từ chối trước hạn, hệ thống sẽ xác nhận thay bạn là đã nhận tiền.',
   ],
   PAYMENT_RECEIPT_CONFIRMED: [
     'Khoản thanh toán đã được xác nhận nhận tiền',
-    'Bên nhận đã xác nhận đã nhận khoản thanh toán của bạn. Vui lòng mở danh sách thanh toán để xem chi tiết.',
+    'Khoản thanh toán của bạn đã được xác nhận là đã nhận. Vui lòng mở danh sách thanh toán để xem chi tiết.',
   ],
   PAYMENT_RECEIPT_REJECTED: [
     'Bên nhận từ chối xác nhận khoản chuyển',
@@ -351,49 +380,62 @@ const isInvoiceType = (value: string): value is keyof typeof invoiceTemplates =>
 // Copy is static and kind-neutral: no role, date, money, reason, failure code, valid/invalid-signature assertion or
 // promise that terms were applied; every notice sends the viewer to the CURRENT status.
 const agreementKinds = ['LEASE', 'DEPOSIT', 'AMENDMENT', 'RENEWAL', 'EARLY_EXIT'];
+// Unified vocabulary per signing-envelope kind (kind is a closed enum validated at the boundary).
+const agreementLabels: Record<string, string> = {
+  LEASE: 'Hợp đồng thuê',
+  DEPOSIT: 'Hợp đồng đặt cọc',
+  AMENDMENT: 'Phụ lục điều chỉnh hợp đồng thuê',
+  RENEWAL: 'Văn bản gia hạn hợp đồng thuê',
+  EARLY_EXIT: 'Phụ lục chấm dứt sớm',
+};
+const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
 const agreementTemplates = {
-  AGREEMENT_REVIEW_READY: [
-    'Có tài liệu ký cần xem xét',
-    'Một tài liệu ký đã được tạo và có thể cần bạn xem xét. Vui lòng mở tài liệu để xem trạng thái hiện tại.',
+  AGREEMENT_REVIEW_READY: (label: string): [string, string] => [
+    `${label} cần bạn xem xét`,
+    `${label} đã được tạo và có thể cần bạn xem xét trước khi ký số. Vui lòng mở hồ sơ để xem trạng thái hiện tại.`,
   ],
-  AGREEMENT_SIGNING_TURN: [
-    'Bên còn lại đã hoàn tất phần của họ',
-    'Bên còn lại đã hoàn tất phần của họ trong một tài liệu ký. Vui lòng mở tài liệu để xem trạng thái hiện tại và các bước hiện có.',
+  AGREEMENT_SIGNING_TURN: (label: string): [string, string] => [
+    `Đến lượt bạn ký số ${lowerFirst(label)}`,
+    `${label} đang chờ chữ ký số của bạn. Vui lòng mở hồ sơ để kiểm tra trạng thái hiện tại và ký số.`,
   ],
-  AGREEMENT_FULLY_SIGNED: [
-    'Tài liệu ký đã đủ chữ ký đã xác minh',
-    'Các chữ ký cần thiết của một tài liệu ký đã được xác minh hoàn tất. Thông báo này không xác nhận nội dung đã được áp dụng; vui lòng mở tài liệu để xem trạng thái hiện tại.',
+  AGREEMENT_SIGNING_DUE_SOON: (label: string): [string, string] => [
+    `Sắp hết hạn ký ${lowerFirst(label)}`,
+    `${label} đang chờ chữ ký số của bạn và sắp đến hạn. Vui lòng mở hồ sơ để ký số trước hạn.`,
   ],
-  AGREEMENT_SIGNATURE_NEEDS_REVIEW: [
-    'Yêu cầu ký cần được kiểm tra',
-    'Một yêu cầu xử lý chữ ký chưa thể hoàn tất và cần được kiểm tra. Vui lòng mở tài liệu để xem trạng thái hiện tại hoặc liên hệ bộ phận hỗ trợ nếu cần.',
+  AGREEMENT_FULLY_SIGNED: (label: string): [string, string] => [
+    `${label} đã đủ chữ ký số`,
+    `Các chữ ký số cần thiết của ${lowerFirst(label)} đã được xác minh hoàn tất. Thông báo này không xác nhận nội dung đã được áp dụng; vui lòng mở hồ sơ để xem trạng thái hiện tại.`,
+  ],
+  AGREEMENT_SIGNATURE_NEEDS_REVIEW: (label: string): [string, string] => [
+    `Chữ ký số của ${lowerFirst(label)} cần được kiểm tra`,
+    `Một yêu cầu ký số của ${lowerFirst(label)} chưa thể hoàn tất và cần được kiểm tra. Vui lòng mở hồ sơ để xem trạng thái hiện tại hoặc liên hệ bộ phận hỗ trợ nếu cần.`,
   ],
 } as const;
 const isAgreementType = (value: string): value is keyof typeof agreementTemplates =>
   Object.hasOwn(agreementTemplates, value);
 
 const amendmentTemplates = {
-  AMENDMENT_RESPONSE_NEEDED: ['Có yêu cầu điều chỉnh hợp đồng', 'Một yêu cầu điều chỉnh hợp đồng đang chờ bạn xem xét. Vui lòng mở hồ sơ để kiểm tra nội dung và trạng thái hiện tại.'],
-  AMENDMENT_DECIDED: ['Yêu cầu điều chỉnh đã được phản hồi', 'Bên còn lại đã phản hồi một yêu cầu điều chỉnh hợp đồng. Vui lòng mở hồ sơ để xem quyết định và bước tiếp theo.'],
-  AMENDMENT_WITHDRAWN: ['Yêu cầu điều chỉnh đã được rút', 'Một yêu cầu điều chỉnh hợp đồng đã được rút. Vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
-  AMENDMENT_EXPIRED: ['Yêu cầu điều chỉnh đã hết hạn', 'Một yêu cầu điều chỉnh hợp đồng đã đóng do hết hạn. Vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
-  AMENDMENT_APPLIED: ['Phụ lục đã được áp dụng', 'Một phụ lục đã được áp dụng vào điều khoản hợp đồng. Vui lòng mở hồ sơ để kiểm tra; thông báo này không xác nhận bất kỳ khoản thanh toán nào.'],
+  AMENDMENT_RESPONSE_NEEDED: ['Có yêu cầu điều chỉnh hợp đồng thuê', 'Một yêu cầu điều chỉnh hợp đồng thuê đang chờ bạn xem xét. Vui lòng mở hồ sơ để kiểm tra nội dung và trạng thái hiện tại.'],
+  AMENDMENT_DECIDED: ['Yêu cầu điều chỉnh đã được phản hồi', 'Bên còn lại đã phản hồi một yêu cầu điều chỉnh hợp đồng thuê. Vui lòng mở hồ sơ để xem quyết định và bước tiếp theo.'],
+  AMENDMENT_WITHDRAWN: ['Yêu cầu điều chỉnh đã được rút', 'Một yêu cầu điều chỉnh hợp đồng thuê đã được rút. Vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
+  AMENDMENT_EXPIRED: ['Yêu cầu điều chỉnh đã hết hạn', 'Một yêu cầu điều chỉnh hợp đồng thuê đã đóng do hết hạn. Vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
+  AMENDMENT_APPLIED: ['Phụ lục đã được áp dụng', 'Một phụ lục đã được áp dụng vào điều khoản hợp đồng thuê. Vui lòng mở hồ sơ để kiểm tra; thông báo này không xác nhận bất kỳ khoản thanh toán nào.'],
 } as const;
 const isAmendmentType = (value: string): value is keyof typeof amendmentTemplates =>
   Object.hasOwn(amendmentTemplates, value);
 
 const renewalTemplates = {
-  LEASE_RENEWAL_WINDOW_OPENED: ['Đã đến thời gian xem xét gia hạn', 'Hợp đồng đang trong thời gian có thể xem xét gia hạn. Vui lòng mở hồ sơ để kiểm tra thời hạn hiện tại và các lựa chọn.'],
-  RENEWAL_REQUESTED: ['Có yêu cầu gia hạn hợp đồng', 'Người thuê đã gửi yêu cầu gia hạn. Chủ nhà có thể mở hồ sơ để xem và quyết định.'],
-  RENEWAL_APPROVED: ['Yêu cầu gia hạn được chấp thuận', 'Chủ nhà đã chấp thuận yêu cầu gia hạn và tạo văn bản ký. Hợp đồng chỉ được gia hạn sau khi hoàn tất các bước ký cần thiết.'],
+  LEASE_RENEWAL_WINDOW_OPENED: ['Đã đến thời gian xem xét gia hạn', 'Hợp đồng thuê đang trong thời gian có thể xem xét gia hạn. Vui lòng mở hồ sơ để kiểm tra thời hạn hiện tại và các lựa chọn.'],
+  RENEWAL_REQUESTED: ['Có yêu cầu gia hạn hợp đồng thuê', 'Người thuê đã gửi yêu cầu gia hạn. Chủ nhà có thể mở hồ sơ để xem và quyết định.'],
+  RENEWAL_APPROVED: ['Yêu cầu gia hạn được chấp thuận', 'Chủ nhà đã chấp thuận yêu cầu gia hạn và tạo văn bản ký. Hợp đồng thuê chỉ được gia hạn sau khi hoàn tất các bước ký số cần thiết.'],
   RENEWAL_REJECTED: ['Yêu cầu gia hạn bị từ chối', 'Chủ nhà đã từ chối yêu cầu gia hạn. Vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
-  RENEWAL_EXPIRED: ['Yêu cầu gia hạn đã hết hạn', 'Một yêu cầu gia hạn đã đóng do hết hạn hoặc hợp đồng không còn ở trạng thái cho phép. Vui lòng mở hồ sơ để xem chi tiết.'],
+  RENEWAL_EXPIRED: ['Yêu cầu gia hạn đã hết hạn', 'Một yêu cầu gia hạn đã đóng do hết hạn hoặc hợp đồng thuê không còn ở trạng thái cho phép. Vui lòng mở hồ sơ để xem chi tiết.'],
 } as const;
 const isRenewalType = (value: string): value is keyof typeof renewalTemplates =>
   Object.hasOwn(renewalTemplates, value);
 
 const terminationTemplates = {
-  TERMINATION_APPROVED: ['Chủ nhà đã đồng ý đề nghị chấm dứt sớm', 'Phụ lục chấm dứt sớm đang chờ ký. Ngày kết thúc hiện tại chỉ thay đổi sau khi hoàn tất các chữ ký cần thiết.'],
+  TERMINATION_APPROVED: ['Chủ nhà đã đồng ý đề nghị chấm dứt sớm', 'Phụ lục chấm dứt sớm đang chờ ký số. Ngày kết thúc hiện tại chỉ thay đổi sau khi hoàn tất các chữ ký số cần thiết.'],
   TERMINATION_RESPONSE_NEEDED: ['Có đề nghị chấm dứt sớm', 'Bên còn lại đã gửi đề nghị chấm dứt sớm. Vui lòng mở hồ sơ để xem và phản hồi.'],
   TERMINATION_AGREED: ['Đề nghị chấm dứt đã được đồng ý', 'Bên còn lại đã đồng ý đề nghị chấm dứt sớm. Việc trả nhà và quyết toán vẫn cần hoàn tất riêng.'],
   TERMINATION_DECLINED: ['Đề nghị chấm dứt bị từ chối', 'Bên còn lại đã từ chối đề nghị chấm dứt sớm. Vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
@@ -402,8 +444,8 @@ const terminationTemplates = {
   TERMINATION_REVIEW_REQUESTED: ['Có yêu cầu xem xét quyết định chấm dứt', 'Người thuê đã yêu cầu xem xét quyết định đơn phương. Vui lòng mở hồ sơ để phản hồi.'],
   TERMINATION_REVIEW_APPROVED: ['Phương án thay thế đã được chấp thuận', 'Chủ nhà đã chấp thuận phương án thay thế và rút quyết định chấm dứt. Kiểm tra hóa đơn để xem nghĩa vụ hiện tại.'],
   TERMINATION_NOTICE_CANCELLED: ['Quyết định đơn phương đã được rút', 'Quyết định đơn phương chấm dứt đã được rút. Vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
-  TERMINATION_ENDED: ['Hợp đồng đã chấm dứt', 'Hợp đồng đã chuyển sang trạng thái chấm dứt. Việc trả nhà, công nợ và quyết toán cần kiểm tra riêng trong hồ sơ.'],
-  LEASE_EXPIRED: ['Thời hạn thuê đã kết thúc', 'Hợp đồng đã hết thời hạn thuê. Vui lòng mở hồ sơ để kiểm tra việc trả nhà và quyết toán.'],
+  TERMINATION_ENDED: ['Hợp đồng thuê đã chấm dứt', 'Hợp đồng thuê đã chuyển sang trạng thái chấm dứt. Việc trả nhà, công nợ và quyết toán cần kiểm tra riêng trong hồ sơ.'],
+  LEASE_EXPIRED: ['Thời hạn thuê đã kết thúc', 'Hợp đồng thuê đã hết thời hạn. Vui lòng mở hồ sơ để kiểm tra việc trả nhà và quyết toán.'],
 } as const;
 const isTerminationType = (value: string): value is keyof typeof terminationTemplates =>
   Object.hasOwn(terminationTemplates, value);
@@ -411,13 +453,13 @@ const isTerminationType = (value: string): value is keyof typeof terminationTemp
 const returnSettlementTemplates = {
   LEASE_RETURN_CONFIRMED: ['Có xác nhận trả nhà', 'Một bên đã ghi nhận xác nhận trả nhà. Vui lòng mở hồ sơ để xem trạng thái hiện tại; việc quyết toán được theo dõi riêng.'],
   LEASE_RETURN_COMPLETED: ['Việc trả nhà đã được ghi nhận', 'Việc trả nhà đã được ghi nhận trong hồ sơ. Vui lòng kiểm tra trạng thái hiện tại; công nợ và quyết toán được xử lý riêng.'],
-  SETTLEMENT_RESPONSE_NEEDED: ['Có đề xuất quyết toán cần phản hồi', 'Một đề xuất quyết toán cần bạn xem xét và phản hồi. Vui lòng mở hồ sơ để kiểm tra nội dung và trạng thái hiện tại.'],
-  SETTLEMENT_DISPUTED: ['Cần đối soát đề xuất quyết toán', 'Đề xuất quyết toán chưa được thống nhất. Vui lòng mở hồ sơ để đối soát và xem các bước hiện có.'],
-  SETTLEMENT_PROPOSAL_INVALIDATED: ['Đề xuất quyết toán cần được lập lại', 'Chi phí bổ sung đã làm đề xuất quyết toán trước đó không còn dùng để xác nhận. Vui lòng mở hồ sơ để đối chiếu trạng thái hiện tại.'],
-  SETTLEMENT_AGREED: ['Đề xuất quyết toán đã được đồng ý', 'Người thuê đã đồng ý đề xuất quyết toán. Việc chuyển tiền và xác nhận nhận tiền được theo dõi riêng; vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
-  SETTLEMENT_RESPONSE_OVERDUE: ['Phản hồi quyết toán cần được kiểm tra', 'Đã qua thời hạn phản hồi của một đề xuất quyết toán. Vui lòng mở hồ sơ để đối soát và xem các bước hiện có; việc hết hạn không thay thế sự đồng ý.'],
-  SETTLEMENT_PAYMENT_OVERDUE: ['Nghĩa vụ quyết toán cần được kiểm tra', 'Đã qua thời hạn của một nghĩa vụ quyết toán. Vui lòng mở hồ sơ để đối soát khoản thanh toán và xem trạng thái hiện tại.'],
-  LEASE_CLOSED: ['Hồ sơ quyết toán cọc đã đóng', 'Hồ sơ quyết toán cọc đã được đóng. Thông báo này không xác nhận các khoản hoàn tiền thuê hoặc công nợ độc lập đã hoàn tất; vui lòng mở hồ sơ để kiểm tra.'],
+  SETTLEMENT_RESPONSE_NEEDED: ['Có đề xuất hoàn cọc cần phản hồi', 'Một đề xuất hoàn cọc và quyết toán cần bạn xem xét và phản hồi. Vui lòng mở hồ sơ để kiểm tra nội dung và trạng thái hiện tại.'],
+  SETTLEMENT_DISPUTED: ['Cần đối soát đề xuất hoàn cọc', 'Đề xuất hoàn cọc và quyết toán chưa được thống nhất. Vui lòng mở hồ sơ để đối soát và xem các bước hiện có.'],
+  SETTLEMENT_PROPOSAL_INVALIDATED: ['Đề xuất hoàn cọc cần được lập lại', 'Chi phí bổ sung đã làm đề xuất hoàn cọc trước đó không còn dùng để xác nhận. Vui lòng mở hồ sơ để đối chiếu trạng thái hiện tại.'],
+  SETTLEMENT_AGREED: ['Đề xuất hoàn cọc đã được đồng ý', 'Người thuê đã đồng ý đề xuất hoàn cọc và quyết toán. Việc chuyển tiền và xác nhận nhận tiền được theo dõi riêng; vui lòng mở hồ sơ để xem trạng thái hiện tại.'],
+  SETTLEMENT_RESPONSE_OVERDUE: ['Phản hồi đề xuất hoàn cọc cần được kiểm tra', 'Đã qua thời hạn phản hồi của một đề xuất hoàn cọc. Vui lòng mở hồ sơ để đối soát và xem các bước hiện có; việc hết hạn không thay thế sự đồng ý.'],
+  SETTLEMENT_PAYMENT_OVERDUE: ['Khoản hoàn cọc/quyết toán cần được kiểm tra', 'Đã qua thời hạn của một khoản hoàn cọc hoặc quyết toán. Vui lòng mở hồ sơ để đối soát khoản thanh toán và xem trạng thái hiện tại.'],
+  LEASE_CLOSED: ['Hồ sơ hoàn cọc đã đóng', 'Hồ sơ hoàn cọc và quyết toán đã được đóng. Thông báo này không xác nhận các khoản hoàn tiền thuê hoặc công nợ độc lập đã hoàn tất; vui lòng mở hồ sơ để kiểm tra.'],
 } as const;
 const isReturnSettlementType = (value: string): value is keyof typeof returnSettlementTemplates =>
   Object.hasOwn(returnSettlementTemplates, value);
@@ -522,6 +564,13 @@ const plainText = (value: unknown, max: number): value is string =>
   value.length <= max &&
   // eslint-disable-next-line no-control-regex -- Reject control characters at the event boundary.
   !/[<>\u0000-\u001f\u007f]/.test(value);
+// Producers trim titles with Java's trim (ASCII only); a title made only of Unicode spaces (e.g. U+00A0) is empty for JS trim.
+// It is an optional decoration, so accept it and omit it when rendering instead of sending the whole event to the DLT.
+// ASCII-only blank titles stay invalid (the producer cannot create them).
+const optionalTitle = (value: unknown): boolean =>
+  plainText(value, 120) ||
+  // eslint-disable-next-line no-control-regex -- Reject control characters at the event boundary.
+  (typeof value === 'string' && value.trim().length === 0 && /[^ -]/.test(value) && value.length <= 120 && !/[<> -]/.test(value));
 const bookingDate = (value: unknown): value is string =>
   typeof value === 'string' &&
   /^\d{4}-\d{2}-\d{2}$/.test(value) &&
@@ -605,7 +654,7 @@ export function parseNotificationEvent(
       const keys = Object.keys(event.data).sort().join(',');
       if (event.recipients.length !== 1 || (keys !== 'listingId' && keys !== 'listingId,listingTitle')
         || !identifier(event.data.listingId)
-        || (keys === 'listingId,listingTitle' && !plainText(event.data.listingTitle, 120)))
+        || (keys === 'listingId,listingTitle' && !optionalTitle(event.data.listingTitle)))
         throw new InvalidNotificationEvent();
     } else if (isAccountType(event.eventType)) {
       // Exactly one affected account and no producer data (no role, reason, actor or identity).
@@ -681,20 +730,20 @@ export function parseNotificationEvent(
         (idKey === 'orderId' && event.recipients.length !== 1) ||
         (listing
           ? keys.some((key) => key !== 'listingId' && key !== 'listingTitle' && key !== extra) ||
-            (Object.hasOwn(event.data, 'listingTitle') && !plainText(event.data.listingTitle, 120)) ||
+            (Object.hasOwn(event.data, 'listingTitle') && !optionalTitle(event.data.listingTitle)) ||
             (extra === 'editId' && !identifier(event.data.editId)) ||
             (extra === 'status' && (typeof event.data.status !== 'string' || !Object.hasOwn(listingStatusCopy, event.data.status)))
           : booking
           ? keys.some((key) => !['bookingId', 'recipientSide', 'listingTitle', 'appointmentDate', 'startTime'].includes(key)) ||
             (Object.hasOwn(event.data, 'recipientSide') &&
               event.data.recipientSide !== 'OWNER' && event.data.recipientSide !== 'RENTER') ||
-            (Object.hasOwn(event.data, 'listingTitle') && !plainText(event.data.listingTitle, 120)) ||
+            (Object.hasOwn(event.data, 'listingTitle') && !optionalTitle(event.data.listingTitle)) ||
             (Object.hasOwn(event.data, 'appointmentDate') && !bookingDate(event.data.appointmentDate)) ||
             (Object.hasOwn(event.data, 'startTime') && !bookingTime(event.data.startTime))
           : idKey === 'requestId'
           ? keys.some((key) => !['requestId', 'recipientSide', 'listingTitle'].includes(key)) ||
             (event.data.recipientSide !== 'OWNER' && event.data.recipientSide !== 'RENTER') ||
-            (Object.hasOwn(event.data, 'listingTitle') && !plainText(event.data.listingTitle, 120))
+            (Object.hasOwn(event.data, 'listingTitle') && !optionalTitle(event.data.listingTitle))
           : keys.length !== 1)
       )
         throw new InvalidNotificationEvent();
@@ -713,7 +762,7 @@ export function renderNotification(
     recipientId,
     sourceEventId: event.eventId,
     type: event.eventType,
-    priority: 'NORMAL' as const,
+    priority: priorities[event.eventType] ?? ('NORMAL' as NotificationPriority),
   };
   if (event.eventType === 'CHAT_ALERT_REQUESTED' || event.eventType === 'CHAT_MESSAGE_RECEIVED') {
     const conversationId = event.data.conversationId;
@@ -814,42 +863,45 @@ export function renderNotification(
     };
   }
   if (isAgreementType(event.eventType)) {
-    const [title, body] = agreementTemplates[event.eventType];
     const { agreementId, agreementKind } = event.data;
+    const [title, body] = agreementTemplates[event.eventType](agreementLabels[agreementKind]);
     return {
       ...common,
       category: 'CONTRACT',
       title,
       body,
-      actionPath: `/dashboard/contracts/${encodeURIComponent(agreementId)}`,
+      // Early-exit documents live in the end tab; every other signing envelope in the sign tab.
+      actionPath: contractPath(agreementId, agreementKind === 'EARLY_EXIT' ? 'end' : 'sign'),
       metadata: { agreementId, agreementKind },
     };
   }
   if (isAmendmentType(event.eventType)) {
     const [title, body] = amendmentTemplates[event.eventType];
     const { contractId } = event.data;
+    // The proposal panel lives in the end tab; only an applied addendum changes the terms shown in the content tab.
     return { ...common, category: 'CONTRACT', title, body,
-      actionPath: `/dashboard/contracts/${encodeURIComponent(contractId)}`, metadata: { contractId } };
+      actionPath: contractPath(contractId, event.eventType === 'AMENDMENT_APPLIED' ? 'content' : 'end'), metadata: { contractId } };
   }
   if (isRenewalType(event.eventType)) {
     const [title, body] = renewalTemplates[event.eventType];
     const { contractId } = event.data;
     return { ...common, category: 'CONTRACT', title, body,
-      actionPath: `/dashboard/contracts/${encodeURIComponent(contractId)}`, metadata: { contractId } };
+      actionPath: contractPath(contractId, 'end'), metadata: { contractId } };
   }
   if (isTerminationType(event.eventType)) {
     const [title, body] = terminationTemplates[event.eventType];
     const { contractId } = event.data;
     return { ...common, category: 'CONTRACT', title, body,
-      actionPath: `/dashboard/contracts/${encodeURIComponent(contractId)}`, metadata: { contractId } };
+      actionPath: unilateralTypes.has(event.eventType)
+        ? `/dashboard/invoices/${encodeURIComponent(contractId)}?section=monthly`
+        : contractPath(contractId, 'end'), metadata: { contractId } };
   }
   if (isReturnSettlementType(event.eventType)) {
     const [title, body] = returnSettlementTemplates[event.eventType];
     const { contractId } = event.data;
     const returnRecorded = event.eventType === 'LEASE_RETURN_CONFIRMED' || event.eventType === 'LEASE_RETURN_COMPLETED';
     return { ...common, category: 'CONTRACT', title, body,
-      actionPath: returnRecorded ? `/dashboard/contracts/${encodeURIComponent(contractId)}`
-        : `/dashboard/invoices/${encodeURIComponent(contractId)}?section=deposit`, metadata: { contractId } };
+      actionPath: returnRecorded ? contractPath(contractId, 'end') : settlementPath(contractId), metadata: { contractId } };
   }
   const [category, baseTitle, baseBody, idKey] = templates[event.eventType];
   const statusCopy = event.eventType === 'LISTING_STATUS_CHANGED'
@@ -865,12 +917,12 @@ export function renderNotification(
       : side === 'RENTER' ? '/dashboard/viewing-schedules/my-bookings' : undefined;
   const detail = idKey === 'bookingId'
     ? [
-        event.data.listingTitle ? `Tin: ${event.data.listingTitle.trim()}.` : '',
+        event.data.listingTitle?.trim() ? `Tin: ${event.data.listingTitle.trim()}.` : '',
         event.data.appointmentDate && event.data.startTime
           ? `Lịch: ${event.data.appointmentDate.slice(8, 10)}/${event.data.appointmentDate.slice(5, 7)}/${event.data.appointmentDate.slice(0, 4)} lúc ${event.data.startTime}.`
           : '',
       ].filter(Boolean).join(' ')
-    : (idKey === 'listingId' || idKey === 'requestId') && event.data.listingTitle
+    : (idKey === 'listingId' || idKey === 'requestId') && event.data.listingTitle?.trim()
       ? `Tin: ${event.data.listingTitle.trim()}.`
       : '';
   return {

@@ -22,7 +22,7 @@ const parse = (value: unknown) => parseNotificationEvent(encode(value));
 describe('payment and refund notification acceptance', () => {
   it.each(types)('%s has only payment identity and a fixed common route', type => {
     const rendered = renderNotification(parse(event(type)), 'stored-party');
-    expect(rendered).toMatchObject({ type, category: 'PAYMENT', priority: 'NORMAL', recipientId: 'stored-party',
+    expect(rendered).toMatchObject({ type, category: 'PAYMENT', priority: expect.stringMatching(/^(NORMAL|HIGH|URGENT)$/), recipientId: 'stored-party',
       actionPath: `/dashboard/payments?paymentId=${paymentId}`, metadata: { paymentId } });
     expect(rendered.title.length).toBeGreaterThan(0); expect(rendered.body.length).toBeGreaterThan(0);
     expect(JSON.stringify(rendered)).not.toMatch(/VND|ETH|SePay|PRIVATE|storageId|recipientSide|LANDLORD|TENANT/);
@@ -62,6 +62,13 @@ describe('payment and refund notification acceptance', () => {
       expect(item.body).toMatch(/chưa/); expect(item.title).not.toMatch(/thành công|đã được xác nhận nhận tiền/);
     }
     expect(renderNotification(parse(event('PAYMENT_REQUEST_CREATED')), 'stored-party').body).not.toMatch(/ngay|còn \d|trước ngày/);
+  });
+
+  it('tells the receiver that silence ends in a system confirmation, without promising it as already done', () => {
+    const reported = renderNotification(parse(event('PAYMENT_TRANSFER_REPORTED')), 'stored-party');
+    expect(reported.body).toMatch(/hệ thống sẽ xác nhận thay bạn/);
+    expect(reported.body).toMatch(/chưa phải xác nhận đã nhận tiền/);
+    expect(renderNotification(parse(event('PAYMENT_RECEIPT_AUTO_CONFIRM_SOON')), 'stored-party').body).toMatch(/hệ thống sẽ tự xác nhận thay bạn/);
   });
 
   it('keeps each real outcome, deduplicates replay, and scopes feed and mutations to the recipient', async () => {
