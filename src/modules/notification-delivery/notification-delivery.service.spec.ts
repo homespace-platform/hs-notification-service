@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { createConnection, Connection, Model } from 'mongoose';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { ConflictException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { validate } from 'class-validator';
 import {
@@ -130,6 +131,159 @@ describe('push contract', () => {
   );
 });
 
+describe('native device contract (no Mongo/Firebase)', () => {
+  const secret = randomBytes(32).toString('base64url');
+  const NATIVE = `${'a'.repeat(40)}:APA91b_${'Z-9.'.repeat(30)}`;
+  const dto = (over: Record<string, unknown> = {}) =>
+    Object.assign(new RegisterDeviceDto(), {
+      installationId: randomUUID(),
+      installationSecret: secret,
+      fid: `c${'A'.repeat(21)}`,
+      ...over,
+    });
+  const bad = async (over: Record<string, unknown>) =>
+    (await validate(dto(over), { whitelist: true, forbidNonWhitelisted: true }))
+      .map((e) => e.property)
+      .sort();
+
+  it('DTO: legacy web body (no platform) and explicit web stay valid', async () => {
+    expect(await bad({})).toEqual([]);
+    expect(await bad({ platform: 'web' })).toEqual([]);
+  });
+  it('DTO: android/ios accept a long FCM token, reject short or bad characters', async () => {
+    for (const platform of ['android', 'ios']) {
+      expect(await bad({ platform, fid: NATIVE })).toEqual([]);
+      expect(await bad({ platform, fid: 'a'.repeat(59) })).toEqual(['fid']);
+      expect(await bad({ platform, fid: 'a'.repeat(4097) })).toEqual(['fid']);
+      expect(await bad({ platform, fid: `${'a'.repeat(60)}!` })).toEqual(['fid']);
+    }
+  });
+  it('DTO: web rejects a native token and native rejects a web FID; unknown platform rejected', async () => {
+    expect(await bad({ fid: NATIVE })).toEqual(['fid']);
+    expect(await bad({ platform: 'web', fid: NATIVE })).toEqual(['fid']);
+    expect(await bad({ platform: 'android' })).toEqual(['fid']);
+    expect(await bad({ platform: 'windows', fid: NATIVE })).toEqual(['platform']);
+  });
+
+  function registry(existing?: Partial<Device>) {
+    const updateOne = jest.fn(() => ({ exec: async () => undefined }));
+    const devices = {
+      findOne: () => ({ lean: () => ({ exec: async () => existing ?? null }) }),
+      updateOne,
+    };
+    const service = new NotificationDeliveryService(
+      devices as unknown as Model<Device>,
+      {} as Model<Delivery>,
+      {} as Model<NotificationDocument>,
+      {} as Model<NotificationPreferenceDocument>,
+      {} as FirebasePushProvider,
+    );
+    return { service, updateOne };
+  }
+  const hash = (s: string) => createHash('sha256').update(s).digest('hex');
+
+  it('registers a native device with its platform, keeping generation on idempotent refresh', async () => {
+    const input = { installationId: randomUUID(), installationSecret: secret, fid: NATIVE, platform: 'android' as const };
+    const fresh = registry();
+    await fresh.service.register('alice', input);
+    expect(fresh.updateOne).toHaveBeenCalledWith(
+      { installationId: input.installationId, secretHash: hash(secret) },
+      expect.objectContaining({ $set: expect.objectContaining({ userId: 'alice', fid: NATIVE, platform: 'android', active: true }) }),
+      { upsert: true },
+    );
+    const registeredAt = new Date(1);
+    const again = registry({ installationId: input.installationId, secretHash: hash(secret), userId: 'alice', fid: NATIVE, platform: 'android', active: true, generation: 'g1', registeredAt });
+    await again.service.register('alice', input);
+    const set = (again.updateOne.mock.calls[0] as unknown as [unknown, { $set: Device }])[1].$set;
+    expect(set).toMatchObject({ generation: 'g1', registeredAt });
+  });
+  it('wrong secret and platform change are 409 and write nothing', async () => {
+    const existing = { installationId: 'i', secretHash: hash(secret), userId: 'alice', fid: NATIVE, platform: 'android' as const, active: true, generation: 'g', registeredAt: new Date() };
+    const r = registry(existing);
+    await expect(r.service.register('alice', { installationId: 'i', installationSecret: 'x'.repeat(43), fid: NATIVE, platform: 'android' })).rejects.toThrow(ConflictException);
+    await expect(r.service.register('alice', { installationId: 'i', installationSecret: secret, fid: `c${'A'.repeat(21)}` })).rejects.toThrow('platform');
+    await expect(r.service.register('alice', { installationId: 'i', installationSecret: secret, fid: NATIVE, platform: 'ios' })).rejects.toThrow(ConflictException);
+    expect(r.updateOne).not.toHaveBeenCalled();
+  });
+  it('legacy row without platform is web: web refresh ok, switching to android is 409', async () => {
+    const legacy = { installationId: 'i', secretHash: hash(secret), userId: 'alice', fid: `c${'A'.repeat(21)}`, active: true, generation: 'g', registeredAt: new Date() };
+    const r = registry(legacy);
+    await r.service.register('alice', { installationId: 'i', installationSecret: secret, fid: legacy.fid });
+    expect(r.updateOne).toHaveBeenCalledTimes(1);
+    await expect(r.service.register('alice', { installationId: 'i', installationSecret: secret, fid: NATIVE, platform: 'android' })).rejects.toThrow('platform');
+  });
+
+  function dispatcher(platform: Device['platform'], category: string) {
+    const job = { notificationId: 'n1', recipientId: 'alice', installationId: 'i1', generation: 'g1', attempts: 1 } as Delivery;
+    const lease = jest.fn<() => Promise<Delivery | null>>().mockResolvedValueOnce(job).mockResolvedValue(null);
+    const one = (value: unknown) => ({ lean: () => ({ exec: async () => value }) });
+    const updateOne = jest.fn(() => ({ exec: async () => undefined }));
+    const push = { enabled: true, send: jest.fn<(d: unknown, c: unknown) => Promise<string>>().mockResolvedValue('m1') };
+    const service = new NotificationDeliveryService(
+      { findOne: () => one({ installationId: 'i1', fid: 'token', platform, generation: 'g1' }) } as unknown as Model<Device>,
+      { findOneAndUpdate: () => ({ lean: () => ({ exec: lease }) }), updateOne, updateMany: () => ({ exec: async () => undefined }) } as unknown as Model<Delivery>,
+      { collection: { find: () => ({ sort: () => ({ limit: () => ({ toArray: async () => [] }) }) }) }, findOne: () => one({ category }) } as unknown as Model<NotificationDocument>,
+      { findOne: () => one(null) } as unknown as Model<NotificationPreferenceDocument>,
+      push as unknown as FirebasePushProvider,
+    );
+    return { service, push, updateOne };
+  }
+  it.each([['android', 'CHAT'], ['ios', 'PAYMENT'], [undefined, 'NEWS']] as const)('dispatch passes device %s and category %s to the provider', async (platform, category) => {
+    const d = dispatcher(platform, category);
+    await d.service.tick();
+    expect(d.push.send).toHaveBeenCalledWith({ fid: 'token', platform }, category);
+    expect(d.updateOne).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ $set: { status: 'accepted', providerMessageId: 'm1' } }));
+  });
+
+  describe('kick', () => {
+    const started = () => {
+      const s = new NotificationDeliveryService({} as Model<Device>, {} as Model<Delivery>, {} as Model<NotificationDocument>, {} as Model<NotificationPreferenceDocument>, {} as FirebasePushProvider);
+      Object.assign(s, { timer: {} }); // simulate onModuleInit having run
+      return s;
+    };
+    const flush = () => new Promise((r) => setImmediate(r));
+    it('is a no-op before module start and while stopping', async () => {
+      const s = new NotificationDeliveryService({} as Model<Device>, {} as Model<Delivery>, {} as Model<NotificationDocument>, {} as Model<NotificationPreferenceDocument>, {} as FirebasePushProvider);
+      const tick = jest.spyOn(s, 'tick').mockResolvedValue();
+      s.kick();
+      await flush(); await flush();
+      Object.assign(s, { timer: {}, stopping: true });
+      s.kick();
+      await flush(); await flush();
+      expect(tick).not.toHaveBeenCalled();
+    });
+    it('coalesces many kicks into one tick, scheduled not inline', async () => {
+      const s = started();
+      const tick = jest.spyOn(s, 'tick').mockResolvedValue();
+      s.kick(); s.kick(); s.kick();
+      expect(tick).not.toHaveBeenCalled();
+      await flush(); await flush();
+      expect(tick).toHaveBeenCalledTimes(1);
+    });
+    it('a kick during a running tick triggers exactly one follow-up and no recursion', async () => {
+      const s = started();
+      const tick = jest.spyOn(s, 'tick');
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      // Real tick() against a stub whose first scan blocks, so `running` stays true.
+      Object.assign(s, {
+        notifications: { collection: { find: () => ({ sort: () => ({ limit: () => ({ toArray: () => gate.then(() => []) }) }) }) } },
+        push: { enabled: false },
+      });
+      const first = s.tick();
+      s.kick(); s.kick();
+      await flush(); await flush();
+      expect(tick).toHaveBeenCalledTimes(1); // nothing re-entered while running
+      release();
+      await first;
+      await flush(); await flush(); await flush();
+      expect(tick).toHaveBeenCalledTimes(2); // one follow-up, then it settles
+      await flush(); await flush();
+      expect(tick).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
 // Explicit opt-in test database; no application credentials or .env are read.
 const mongoDescribe = process.env.TEST_MONGODB_URI ? describe : describe.skip;
 mongoDescribe('durable push dispatcher (Mongo)', () => {
@@ -141,7 +295,7 @@ mongoDescribe('durable push dispatcher (Mongo)', () => {
   let service: NotificationDeliveryService;
   let push: {
     enabled: boolean;
-    send: ReturnType<typeof jest.fn<(fid: string) => Promise<string>>>;
+    send: ReturnType<typeof jest.fn<(d: unknown, c: unknown) => Promise<string>>>;
   };
   const proof = () => ({
     installationId: randomUUID(),
@@ -190,7 +344,7 @@ mongoDescribe('durable push dispatcher (Mongo)', () => {
     push = {
       enabled: true,
       send: jest
-        .fn<(fid: string) => Promise<string>>()
+        .fn<(d: unknown, c: unknown) => Promise<string>>()
         .mockResolvedValue('projects/test/messages/accepted'),
     };
     service = new NotificationDeliveryService(

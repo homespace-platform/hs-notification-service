@@ -108,6 +108,49 @@ Create and persist the UUID and random secret once per browser installation (e.g
 
 The server sends a generic Vietnamese notification and `data.event=notifications.changed`, with no notification ID, recipient, title, body, metadata, or action path. The browser fetches its authenticated feed; it must never display cached previous-account content. A push already accepted by Firebase can still arrive after logout/account switching, which is why its content is generic. Provider acceptance is recorded as `accepted`; it is never treated as device delivery or a read receipt.
 
+## Device REST contract v2 (native mobile)
+
+v2 is a strict superset of v1: a body without `platform` is `web` and behaves exactly as before. `DELETE /devices/:installationId` is unchanged.
+
+```json
+{
+  "installationId": "UUID v4",
+  "installationSecret": "base64url, 43-128 chars",
+  "platform": "web | android | ios (optional, default web)",
+  "fid": "push address for the platform"
+}
+```
+
+- `platform=web`: `fid` is the Firebase Installation ID, regex `^[cdef][A-Za-z0-9_-]{21}$` (unchanged).
+- `platform=android|ios`: `fid` is the native FCM registration token, regex `^[A-Za-z0-9_:.-]{60,4096}$` (typically ~150-180 chars with `:`, `-`, `_`). The field keeps the name `fid` and is stored in the same Mongo field/unique index; read it as the "push address" for the row's `platform`. A web FID can never be accepted as native and vice versa.
+- An installation cannot change platform: re-registering an existing `installationId` with a different `platform` (a legacy row without `platform` counts as `web`) returns 409, like a wrong proof secret. All proof/secret-hash, generation, account-switch and idempotency rules from v1 apply unchanged. A native client must generate its own installation UUID/secret once (Keystore/Keychain), never reuse a user ID or the FCM token as the secret.
+- Re-register on every `onNewToken`/token refresh and at authenticated startup; call DELETE before logout.
+
+### Mobile payload
+
+Native devices get a display notification (data-only is unreliable when the app is killed), still generic: static copy, `data = { event: 'notifications.changed', category }` and nothing else (no notification ID, recipient, title/body of the notification, metadata, action path or chat text). The client opens/refreshes its authenticated feed.
+
+| Field | Value |
+|---|---|
+| `token` | native FCM token |
+| `notification` | `title: 'HomeSpace'`, `body: 'Bạn có tin nhắn mới.'` for `CHAT`, otherwise `'Bạn có thông báo mới.'` |
+| `data` | `event=notifications.changed`, `category=<NotificationCategory>` |
+| `android` | `priority=high`, `ttl=300000` ms, `collapseKey` and `notification.tag` = `hs-<category lowercase>`, `notification.channelId=homespace-notifications` |
+| `apns` | headers `apns-priority=10`, `apns-collapse-id=hs-<category lowercase>`; `aps.sound=default` |
+
+Collapsing is per category: several pending notifications of one category show as one. The Web Push message is unchanged.
+
+The Android app must create a notification channel with ID `homespace-notifications` (importance high) before the first push; otherwise FCM falls back to the manifest default channel. iOS is wired but untested.
+
+### Adding the Android/iOS apps to the shared Firebase project
+
+Console steps only; no secret is committed and the server needs no new variable (it already sends with the same service account).
+
+1. Firebase Console -> the project already used for Web Push -> **Project settings -> General -> Your apps -> Add app**.
+2. Android: enter the exact application ID (package name), register, download `google-services.json` and give it to the mobile build (kept out of Git unless the mobile repo's policy says otherwise). Add the SHA-1/SHA-256 of debug/release signing keys if needed.
+3. iOS: enter the bundle ID, download `GoogleService-Info.plist`; under **Project settings -> Cloud Messaging -> Apple app configuration** upload an APNs authentication key (.p8) in the Console. Never commit the .p8.
+4. Confirm **Firebase Cloud Messaging API (V1)** is enabled (already required for web). The existing server service account can send to all apps in the project.
+
 ## Current Firebase client contract
 
 Official Firebase documentation checked 2026-11-12 recommends FIDs and deprecates registration tokens. Use a Firebase Web SDK release exposing `register()` and `onRegistered()` from `firebase/messaging`. Request browser notification permission, configure an HTTPS service worker (`firebase-messaging-sw.js` or explicit registration), generate a Web Push certificate in Firebase, and pass its **public** VAPID key to `register(messaging, {vapidKey})`. Send the FID from `onRegistered(messaging, callback)` to this endpoint. Merely calling Firebase Installations `getId()` does not register messaging; a bare FID is insufficient. Do not mix legacy `getToken()` registration with FID registration. The DTO intentionally accepts only FIDs, not legacy FCM tokens. Frontend integration is outside this backend change.
@@ -116,7 +159,7 @@ Sources: [Web setup and registration](https://firebase.google.com/docs/cloud-mes
 
 ## Persistence and retries
 
-Mongo `notifications` rows serve as a recoverable outbox until `pushQueuedAt` is written. The dispatcher scans batches of 100 every five seconds, including notifications inserted before the dispatcher starts. Each notification/installation pair has a unique Mongo delivery row. Jobs are inserted before marking the outbox complete, so a crash or partial insert safely repeats enqueue. Only devices bound before notification creation are eligible. Push preferences are rechecked at send time; disabled categories become `skipped`. Device ownership, generation, activity and notification deletion are also rechecked. A category disabled at send time is not replayed when re-enabled later.
+Mongo `notifications` rows serve as a recoverable outbox until `pushQueuedAt` is written. The dispatcher scans batches of 100 every five seconds, including notifications inserted before the dispatcher starts. After `enqueue` succeeds the service also "kicks" the dispatcher: one `setImmediate`-scheduled tick (coalesced; a kick during a running tick causes one follow-up tick, never recursion) so delivery does not wait for the next 5 s scan. The kick is only a wake-up; leasing, outbox and at-least-once semantics are unchanged and the 5 s scan remains the safety net. Each notification/installation pair has a unique Mongo delivery row. Jobs are inserted before marking the outbox complete, so a crash or partial insert safely repeats enqueue. Only devices bound before notification creation are eligible. Push preferences are rechecked at send time; disabled categories become `skipped`. Device ownership, generation, activity and notification deletion are also rechecked. A category disabled at send time is not replayed when re-enabled later.
 
 Sending is sequential in batches of 50, leased atomically for two minutes, and retried at most five times with 1/2/4/8 minute delays. Known unregistered/invalid registration errors disable that binding. Failed jobs stay inspectable; there is no automatic infinite replay of failed sends. While the provider is explicitly disabled, pending jobs remain durable and attempts do not increase. Missing credentials prevent enablement in server configuration. Never log FIDs, proof values, private keys, or raw provider errors.
 

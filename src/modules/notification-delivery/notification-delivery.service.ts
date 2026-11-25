@@ -15,6 +15,7 @@ import {
   DEVICE_MODEL,
   DELIVERY_MODEL,
   Device,
+  DevicePlatform,
   Delivery,
 } from './delivery.schema';
 import { FirebasePushProvider } from './firebase-push.provider';
@@ -38,6 +39,8 @@ export class NotificationDeliveryService
 {
   private timer?: ReturnType<typeof setInterval>;
   private running = false;
+  private wake = false;
+  private kickScheduled = false;
   private stopping = false;
   private activeTick?: Promise<void>;
   private readonly logger = new Logger(NotificationDeliveryService.name);
@@ -54,15 +57,24 @@ export class NotificationDeliveryService
 
   async register(
     userId: string,
-    input: { installationId: string; installationSecret: string; fid: string },
+    input: {
+      installationId: string;
+      installationSecret: string;
+      fid: string;
+      platform?: DevicePlatform;
+    },
   ): Promise<void> {
     const secretHash = this.hash(input.installationSecret);
+    const platform = input.platform ?? 'web';
     const existing = await this.devices
       .findOne({ installationId: input.installationId })
       .lean()
       .exec();
     if (existing && existing.secretHash !== secretHash)
       throw new ConflictException('Installation proof does not match');
+    // Legacy rows have no platform and are web; an installation never changes platform.
+    if (existing && (existing.platform ?? 'web') !== platform)
+      throw new ConflictException('Installation platform cannot change');
     const sameBinding =
       existing?.userId === userId &&
       existing.fid === input.fid &&
@@ -76,6 +88,7 @@ export class NotificationDeliveryService
             $set: {
               userId,
               fid: input.fid,
+              platform,
               active: true,
               updatedAt: now,
               generation: sameBinding ? existing.generation : randomUUID(),
@@ -114,6 +127,35 @@ export class NotificationDeliveryService
 
   /** The notification itself is the durable outbox until every device job exists. */
   async enqueue(
+    notification: Pick<NotificationView, 'id' | 'createdAt'>,
+    recipientId: string,
+  ): Promise<void> {
+    await this.enqueueJobs(notification, recipientId);
+    this.kick();
+  }
+
+  /**
+   * Wake the dispatcher now instead of waiting for the 5s scan. Only schedules a
+   * tick (never runs one inline), so it cannot recurse; the tick itself still
+   * owns leasing/outbox semantics. No-op until the module has started.
+   */
+  kick(): void {
+    if (!this.timer || this.stopping) return;
+    if (this.running) {
+      this.wake = true;
+      return;
+    }
+    if (this.kickScheduled) return;
+    this.kickScheduled = true;
+    setImmediate(() => {
+      this.kickScheduled = false;
+      if (this.stopping) return;
+      if (this.running) this.wake = true;
+      else this.activeTick = this.tick();
+    });
+  }
+
+  private async enqueueJobs(
     notification: Pick<NotificationView, 'id' | 'createdAt'>,
     recipientId: string,
   ): Promise<void> {
@@ -188,7 +230,7 @@ export class NotificationDeliveryService
         .toArray();
       for (const row of unqueued) {
         if (this.stopping) return;
-        await this.enqueue(
+        await this.enqueueJobs(
           { id: row._id.toString(), createdAt: row.createdAt },
           row.recipientId,
         );
@@ -239,6 +281,11 @@ export class NotificationDeliveryService
       );
     } finally {
       this.running = false;
+      // A kick that arrived mid-tick: schedule (not run) one more pass.
+      if (this.wake) {
+        this.wake = false;
+        this.kick();
+      }
     }
   }
 
@@ -282,7 +329,10 @@ export class NotificationDeliveryService
       return;
     }
     try {
-      const providerMessageId = await this.push.send(device.fid);
+      const providerMessageId = await this.push.send(
+        { fid: device.fid, platform: device.platform },
+        notification.category,
+      );
       await this.deliveries
         .updateOne(filter, {
           $set: { status: 'accepted', providerMessageId },

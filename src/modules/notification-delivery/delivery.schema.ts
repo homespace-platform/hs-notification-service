@@ -1,11 +1,19 @@
 import { Schema } from 'mongoose';
 
 export const DEVICE_MODEL = 'NotificationDevice';
+export const DEVICE_PLATFORMS = ['web', 'android', 'ios'] as const;
+export type DevicePlatform = (typeof DEVICE_PLATFORMS)[number];
 export interface Device {
   installationId: string;
   secretHash: string;
   userId: string;
+  /**
+   * Push address for `platform`: web FID, or native FCM registration token.
+   * Kept in this field so the unique index is unchanged.
+   */
   fid: string;
+  /** Absent on legacy rows: treat as 'web'. An installation never changes platform. */
+  platform?: DevicePlatform;
   generation: string;
   active: boolean;
   registeredAt: Date;
@@ -17,6 +25,7 @@ export const DeviceSchema = new Schema<Device>(
     secretHash: { type: String, required: true },
     userId: { type: String, required: true, index: true },
     fid: { type: String, required: true, unique: true },
+    platform: { type: String, enum: DEVICE_PLATFORMS, default: 'web' },
     generation: { type: String, required: true },
     active: { type: Boolean, required: true },
     registeredAt: { type: Date, required: true },
