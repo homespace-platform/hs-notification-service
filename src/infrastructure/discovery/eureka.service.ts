@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'node:crypto';
 import { resolveAdvertisedHost } from '../network/network-address.resolver';
 
 @Injectable()
@@ -27,7 +28,8 @@ export class EurekaService implements OnModuleInit, OnApplicationShutdown {
       .getOrThrow<string>('EUREKA_CLIENT_SERVICE_URL')
       .replace(/\/$/, '');
 
-    this.instanceId = `${hostname}:${config.getOrThrow<string>('SERVICE_NAME')}:${port}`;
+    // Unique per process: during a redeploy the old container's shutdown DELETE must not remove the new registration.
+    this.instanceId = `${hostname}:${config.getOrThrow<string>('SERVICE_NAME')}:${port}:${randomUUID().slice(0, 8)}`;
     this.instanceUrl = `http://${hostname}:${port}`;
     this.registrationUrl = `${eurekaBaseUrl}/apps/${this.serviceName}`;
   }
