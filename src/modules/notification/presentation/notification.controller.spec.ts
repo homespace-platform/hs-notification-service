@@ -365,7 +365,7 @@ describe('NotificationController (HTTP)', () => {
       const bob = await http().get('/preferences').set(as(BOB)).expect(200);
       expect(
         bob.body.result.items.every(
-          (item: { push: boolean; email: boolean }) => item.push && item.email,
+          (item: { category: string; push: boolean; email: boolean }) => item.push && item.email === (item.category !== 'SYSTEM'),
         ),
       ).toBe(true);
 
@@ -403,7 +403,7 @@ describe('NotificationController (HTTP)', () => {
           .expect(400);
         expect(
           (await service.getPreferences(ALICE)).every(
-            (item) => item.push && item.email,
+            (item) => item.push && item.email === (item.category !== 'SYSTEM'),
           ),
         ).toBe(true);
       },

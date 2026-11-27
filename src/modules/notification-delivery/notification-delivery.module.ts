@@ -17,7 +17,10 @@ import {
   DeliverySchema,
 } from './delivery.schema';
 import { DeviceController } from './device.controller';
+import { EmailDeliveryService } from './email-delivery.service';
+import { EMAIL_DELIVERY_MODEL, EmailDeliverySchema, EmailOutbox, MongoEmailOutbox } from './email-outbox';
 import { EmailProvider } from './email.provider';
+import { CoreUserEmailDirectory, UserEmailDirectory } from './user-email.directory';
 import { FirebasePushProvider } from './firebase-push.provider';
 import { NotificationDeliveryService } from './notification-delivery.service';
 
@@ -28,6 +31,7 @@ import { NotificationDeliveryService } from './notification-delivery.service';
     MongooseModule.forFeature([
       { name: DEVICE_MODEL, schema: DeviceSchema },
       { name: DELIVERY_MODEL, schema: DeliverySchema },
+      { name: EMAIL_DELIVERY_MODEL, schema: EmailDeliverySchema },
       { name: NotificationDocument.name, schema: NotificationSchema },
       {
         name: NotificationPreferenceDocument.name,
@@ -36,7 +40,14 @@ import { NotificationDeliveryService } from './notification-delivery.service';
     ]),
   ],
   controllers: [DeviceController],
-  providers: [NotificationDeliveryService, FirebasePushProvider, EmailProvider],
-  exports: [NotificationDeliveryService, EmailProvider],
+  providers: [
+    NotificationDeliveryService,
+    FirebasePushProvider,
+    EmailProvider,
+    EmailDeliveryService,
+    { provide: EmailOutbox, useClass: MongoEmailOutbox },
+    { provide: UserEmailDirectory, useClass: CoreUserEmailDirectory },
+  ],
+  exports: [NotificationDeliveryService, EmailProvider, EmailDeliveryService],
 })
 export class NotificationDeliveryModule {}

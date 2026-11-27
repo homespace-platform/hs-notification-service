@@ -24,6 +24,30 @@ export class MongoNotificationPreferenceRepository
 
   async onModuleInit(): Promise<void> {
     await this.model.init();
+    // One-time: SYSTEM email used to default to true (unused, UI disabled), so stored true is not consent.
+    await this.model.collection.updateMany(
+      { emailOptInReset: { $ne: true } },
+      [
+        {
+          $set: {
+            emailOptInReset: true,
+            items: {
+              $map: {
+                input: '$items',
+                as: 'i',
+                in: {
+                  $cond: [
+                    { $eq: ['$$i.category', 'SYSTEM'] },
+                    { $mergeObjects: ['$$i', { email: false }] },
+                    '$$i',
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+    );
   }
 
   async find(userId: string): Promise<PreferenceItem[] | null> {
@@ -47,7 +71,7 @@ export class MongoNotificationPreferenceRepository
     await this.model
       .updateOne(
         { userId },
-        { $set: { items, updatedAt: now } },
+        { $set: { items, updatedAt: now, emailOptInReset: true } },
         { upsert: true },
       )
       .exec();
@@ -65,13 +89,18 @@ export class MongoNotificationPreferenceRepository
         $set: {
           userId: { $literal: userId },
           updatedAt: now,
+          emailOptInReset: true,
           items: {
             $map: {
               input: NOTIFICATION_CATEGORIES,
               as: 'category',
               in: {
                 $mergeObjects: [
-                  { category: '$$category', push: true, email: true },
+                  {
+                    category: '$$category',
+                    push: true,
+                    email: { $ne: ['$$category', 'SYSTEM'] },
+                  },
                   {
                     $arrayElemAt: [
                       {

@@ -87,7 +87,12 @@ export function validateEnvironment(config: Record<string, unknown>) {
   const mailKey = typeof config.MAIL_RESEND_API_KEY === 'string' ? config.MAIL_RESEND_API_KEY.trim() : '';
   settings.MAIL_RESEND_API_KEY = mailKey;
   if (mailKey) {
-    for (const name of ['MAIL_FROM_ADDRESS', 'MAIL_FROM_NAME']) settings[name] = required(name);
+    for (const name of ['MAIL_FROM_ADDRESS', 'MAIL_FROM_NAME', 'MAIL_APP_BASE_URL', 'CORE_INTERNAL_BASE_URL']) settings[name] = required(name);
+    for (const name of ['MAIL_APP_BASE_URL', 'CORE_INTERNAL_BASE_URL']) {
+      const url = new URL(settings[name] as string);
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error(`Invalid ${name}`);
+      settings[name] = (settings[name] as string).replace(/\/+$/, '');
+    }
     if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(settings.MAIL_FROM_ADDRESS as string)) throw new Error('Invalid MAIL_FROM_ADDRESS');
   }
   for (const name of ['KEYCLOAK_ISSUER_URL', 'KEYCLOAK_AUDIENCE', 'NOTIFICATION_REALTIME_ORIGINS']) settings[name] = required(name);

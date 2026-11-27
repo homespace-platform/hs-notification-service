@@ -26,6 +26,10 @@ export class NotificationPreferenceDocument {
   @Prop({ type: [PreferenceEntrySchema], default: [] })
   items: PreferenceEntry[];
 
+  /** Marks docs already migrated to SYSTEM email opt-in (default off). */
+  @Prop({ type: Boolean })
+  emailOptInReset?: boolean;
+
   @Prop({ type: Date, required: true })
   updatedAt: Date;
 }

@@ -28,8 +28,11 @@ describe('validateEnvironment', () => {
   it('keeps email optional and requires the sender once a Resend key is set', () => {
     expect(validateEnvironment(base).MAIL_RESEND_API_KEY).toBe('');
     expect(validateEnvironment({ ...base, MAIL_RESEND_API_KEY: '  ' }).MAIL_RESEND_API_KEY).toBe('');
-    const mail = { ...base, MAIL_RESEND_API_KEY: 're_x', MAIL_FROM_ADDRESS: 'no-reply@homespace.vn', MAIL_FROM_NAME: 'HomeSpace' };
+    const mail = { ...base, MAIL_RESEND_API_KEY: 're_x', MAIL_FROM_ADDRESS: 'no-reply@homespace.vn', MAIL_FROM_NAME: 'HomeSpace', MAIL_APP_BASE_URL: 'https://homespace.id.vn/', CORE_INTERNAL_BASE_URL: 'http://core:8080' };
     expect(validateEnvironment(mail).MAIL_FROM_NAME).toBe('HomeSpace');
+    expect(validateEnvironment(mail).MAIL_APP_BASE_URL).toBe('https://homespace.id.vn');
+    expect(() => validateEnvironment({ ...mail, MAIL_APP_BASE_URL: '' })).toThrow();
+    expect(() => validateEnvironment({ ...mail, CORE_INTERNAL_BASE_URL: 'ftp://x' })).toThrow('Invalid CORE_INTERNAL_BASE_URL');
     expect(() => validateEnvironment({ ...mail, MAIL_FROM_ADDRESS: '' })).toThrow();
     expect(() => validateEnvironment({ ...mail, MAIL_FROM_NAME: '' })).toThrow();
     expect(() => validateEnvironment({ ...mail, MAIL_FROM_ADDRESS: 'nope' })).toThrow('Invalid MAIL_FROM_ADDRESS');

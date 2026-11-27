@@ -132,7 +132,7 @@ export class InMemoryPreferenceRepository extends NotificationPreferenceReposito
     const items = this.store.get(userId) ?? [];
     let item = items.find((entry) => entry.category === category);
     if (!item) {
-      item = { category, push: true, email: true };
+      item = { category, push: true, email: category !== 'SYSTEM' };
       items.push(item);
     }
     item[channel] = enabled;

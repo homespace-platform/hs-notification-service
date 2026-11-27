@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { ErrorCode } from '../../../common/constants/error-code.constant';
 import { decodeCursor, encodeCursor } from '../domain/feed-cursor';
 import {
@@ -67,6 +68,32 @@ describe('NotificationService', () => {
       expect(replay.notification.id).toBe(first.notification.id);
       expect(notifications.rows).toHaveLength(1);
       expect(notifications.rows[0].title).toBe('Payment received');
+    });
+
+    it('queues email only for SYSTEM announcements and never lets email failure affect push or storage', async () => {
+      const notifications = new InMemoryNotificationRepository();
+      const enqueue = jest.fn(async () => {});
+      const push = jest.fn(async () => {});
+      const service = new NotificationService(
+        notifications,
+        new InMemoryPreferenceRepository(),
+        { enqueue: push } as never,
+        undefined,
+        { enqueue } as never,
+      );
+      const announcement = input({
+        category: 'SYSTEM',
+        type: 'PLATFORM_ANNOUNCEMENT',
+        sourceEventId: 'admin_bc1',
+      });
+      await service.create(input());
+      expect(enqueue).not.toHaveBeenCalled();
+      await service.create(announcement);
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      enqueue.mockRejectedValue(new Error('mongo down') as never);
+      const failing = await service.create({ ...announcement, recipientId: BOB });
+      expect(failing.created).toBe(true);
+      expect(push).toHaveBeenCalledTimes(3);
     });
 
     it('allows the same sourceEventId for different recipients', async () => {
@@ -424,11 +451,13 @@ describe('NotificationService', () => {
       expect(
         items
           .filter((item) => item.category !== 'NEWS')
-          .every((item) => item.push && item.email),
+          .every(
+            (item) => item.push && item.email === (item.category !== 'SYSTEM'),
+          ),
       ).toBe(true);
       expect(
         (await service.getPreferences(BOB)).every(
-          (item) => item.push && item.email,
+          (item) => item.push && item.email === (item.category !== 'SYSTEM'),
         ),
       ).toBe(true);
     });
@@ -444,7 +473,11 @@ describe('NotificationService', () => {
         ),
       );
 
-      expect(stale.every((item) => item.push && item.email)).toBe(true);
+      expect(
+        stale.every(
+          (item) => item.push && item.email === (item.category !== 'SYSTEM'),
+        ),
+      ).toBe(true);
       expect(await service.getPreferences(ALICE)).toEqual(
         NOTIFICATION_CATEGORIES.map((category) => ({
           category,
@@ -483,11 +516,13 @@ describe('NotificationService', () => {
       });
     });
 
-    it('defaults every category to enabled', async () => {
+    it('defaults every category to enabled except SYSTEM email (opt-in)', async () => {
       const { service } = setup();
       const items = await service.getPreferences(ALICE);
       expect(items.length).toBeGreaterThan(0);
-      expect(items.every((i) => i.push && i.email)).toBe(true);
+      expect(
+        items.every((i) => i.push && i.email === (i.category !== 'SYSTEM')),
+      ).toBe(true);
     });
 
     it('stores per-user preferences without affecting other users', async () => {

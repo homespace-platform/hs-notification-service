@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { NotificationDeliveryService } from '../../notification-delivery/notification-delivery.service';
+import { EmailDeliveryService } from '../../notification-delivery/email-delivery.service';
 import { NotificationRealtimeService } from '../../notification-realtime/notification-realtime.service';
 import { ErrorCode } from '../../../common/constants/error-code.constant';
 import { AppException } from '../../../common/exceptions/app.exception';
@@ -63,6 +64,7 @@ export class NotificationService {
     private readonly preferences: NotificationPreferenceRepository,
     @Optional() private readonly delivery?: NotificationDeliveryService,
     @Optional() private readonly realtime?: NotificationRealtimeService,
+    @Optional() private readonly emailDelivery?: EmailDeliveryService,
   ) {}
 
   /**
@@ -104,6 +106,14 @@ export class NotificationService {
         this.logger.warn(
           'Realtime notification deferred to client feed refresh',
         );
+      }
+    }
+    // Last and isolated: email only queues a durable job, it never delays or fails push/realtime.
+    if (record.category === 'SYSTEM' && record.type === 'PLATFORM_ANNOUNCEMENT') {
+      try {
+        await this.emailDelivery?.enqueue(record.id, record.recipientId);
+      } catch {
+        this.logger.warn('Email enqueue deferred');
       }
     }
     return { notification, created };
@@ -200,7 +210,7 @@ export class NotificationService {
     );
   }
 
-  /** Categories not configured fall back to enabled for every channel. */
+  /** Categories not configured fall back to enabled, except SYSTEM email (opt-in, see docs/EMAIL_RESEND.md). */
   private withDefaults(items: PreferenceItem[] | null): PreferenceItem[] {
     const byCategory = new Map(items?.map((item) => [item.category, item]));
     return NOTIFICATION_CATEGORIES.map((category) => {
@@ -208,7 +218,7 @@ export class NotificationService {
       return {
         category,
         push: item?.push ?? true,
-        email: item?.email ?? true,
+        email: item?.email ?? category !== 'SYSTEM',
       };
     });
   }
