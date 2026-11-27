@@ -17,6 +17,7 @@ import {
   DeliverySchema,
 } from './delivery.schema';
 import { DeviceController } from './device.controller';
+import { EmailProvider } from './email.provider';
 import { FirebasePushProvider } from './firebase-push.provider';
 import { NotificationDeliveryService } from './notification-delivery.service';
 
@@ -35,7 +36,7 @@ import { NotificationDeliveryService } from './notification-delivery.service';
     ]),
   ],
   controllers: [DeviceController],
-  providers: [NotificationDeliveryService, FirebasePushProvider],
-  exports: [NotificationDeliveryService],
+  providers: [NotificationDeliveryService, FirebasePushProvider, EmailProvider],
+  exports: [NotificationDeliveryService, EmailProvider],
 })
 export class NotificationDeliveryModule {}

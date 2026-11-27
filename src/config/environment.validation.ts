@@ -83,6 +83,13 @@ export function validateEnvironment(config: Record<string, unknown>) {
   if (settings.PUSH_ENABLED) {
     for (const name of ['FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY']) settings[name] = required(name);
   }
+  // Optional like push credentials: a blank key disables the email channel (EmailProvider logs it at startup).
+  const mailKey = typeof config.MAIL_RESEND_API_KEY === 'string' ? config.MAIL_RESEND_API_KEY.trim() : '';
+  settings.MAIL_RESEND_API_KEY = mailKey;
+  if (mailKey) {
+    for (const name of ['MAIL_FROM_ADDRESS', 'MAIL_FROM_NAME']) settings[name] = required(name);
+    if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(settings.MAIL_FROM_ADDRESS as string)) throw new Error('Invalid MAIL_FROM_ADDRESS');
+  }
   for (const name of ['KEYCLOAK_ISSUER_URL', 'KEYCLOAK_AUDIENCE', 'NOTIFICATION_REALTIME_ORIGINS']) settings[name] = required(name);
   const issuer = new URL(settings.KEYCLOAK_ISSUER_URL as string);
   if (!['http:', 'https:'].includes(issuer.protocol) || issuer.username || issuer.password || issuer.search || issuer.hash) throw new Error('Invalid KEYCLOAK_ISSUER_URL');

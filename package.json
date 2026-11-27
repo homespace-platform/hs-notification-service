@@ -22,6 +22,7 @@
     "test:cov": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json",
+    "mail:test": "node --env-file=.env scripts/mail-test.cjs",
     "test:backend": "node --env-file=.env scripts/smoke-backend.cjs"
   },
   "dependencies": {

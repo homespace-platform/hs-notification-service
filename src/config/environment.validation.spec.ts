@@ -25,6 +25,16 @@ describe('validateEnvironment', () => {
     expect(() => validateEnvironment({ ...base, KAFKA_ENABLED: 'yes' })).toThrow();
   });
 
+  it('keeps email optional and requires the sender once a Resend key is set', () => {
+    expect(validateEnvironment(base).MAIL_RESEND_API_KEY).toBe('');
+    expect(validateEnvironment({ ...base, MAIL_RESEND_API_KEY: '  ' }).MAIL_RESEND_API_KEY).toBe('');
+    const mail = { ...base, MAIL_RESEND_API_KEY: 're_x', MAIL_FROM_ADDRESS: 'no-reply@homespace.vn', MAIL_FROM_NAME: 'HomeSpace' };
+    expect(validateEnvironment(mail).MAIL_FROM_NAME).toBe('HomeSpace');
+    expect(() => validateEnvironment({ ...mail, MAIL_FROM_ADDRESS: '' })).toThrow();
+    expect(() => validateEnvironment({ ...mail, MAIL_FROM_NAME: '' })).toThrow();
+    expect(() => validateEnvironment({ ...mail, MAIL_FROM_ADDRESS: 'nope' })).toThrow('Invalid MAIL_FROM_ADDRESS');
+  });
+
   it('requires separate Kafka topics and bounded integer retries', () => {
     const kafka = { ...base, KAFKA_ENABLED: 'true', KAFKA_BROKERS: 'localhost:9092', KAFKA_CLIENT_ID: 'test', KAFKA_GROUP_ID: 'test', KAFKA_EVENTS_TOPIC: 'events', KAFKA_DLT_TOPIC: 'dlt', KAFKA_RETRY_ATTEMPTS: '3', KAFKA_RETRY_DELAY_MS: '100' };
     expect(validateEnvironment(kafka).KAFKA_RETRY_ATTEMPTS).toBe(3);
