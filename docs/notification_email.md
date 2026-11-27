@@ -30,7 +30,7 @@ Thêm: **bản tổng hợp Chi nhánh 08:00** gửi email cho chủ nhà, mặc
 
 1. **Mặc định BẬT/TẮT** theo bảng trên. Lưu ý: code hiện đặt sẵn `email=true` cho nhiều mục (`notification.service.ts:221`); đó là giá trị mặc định cũ, không phải người dùng đồng ý. Đề xuất: đặt lại theo bảng, giữ lựa chọn người dùng đã tự đổi sau này.
 2. **Email bảo mật không tắt được** (khoá/mở khoá tài khoản, đổi vai trò; sau này đổi mật khẩu, đổi tài khoản ngân hàng).
-3. **PDF:** biên nhận thanh toán **đính kèm** (do HomeSpace tạo, ít dữ liệu nhạy cảm, cần xác minh mẫu không chứa số tài khoản đầy đủ); hợp đồng **chỉ gửi link** cần đăng nhập (chứa CCCD, địa chỉ, ngân hàng).
+3. **PDF (chủ dự án chốt 28/11): đính kèm file thật lấy từ S3** cho email hoá đơn/biên nhận và hợp đồng. Cách lấy: notification gọi API nội bộ của Core (`/internal/**`, có `GATEWAY_INTERNAL_SECRET`), Core đọc S3 và kiểm tra toàn vẹn như endpoint tải PDF hiện có rồi trả byte; notification không giữ khoá S3. Giới hạn: tổng đính kèm Resend 40 MB; file quá lớn hoặc chưa sẵn sàng thì gửi email kèm link và ghi lý do. Hoá đơn tháng và gói hội viên chưa có PDF trên S3 → phải sinh PDF trước (Gotenberg) mới đính kèm được. Lưu ý: PDF hợp đồng có thể chứa CCCD/địa chỉ/số tài khoản; chỉ gửi tới email của chính các bên trong hợp đồng.
 4. **Hạn mức Resend:** gói miễn phí ~100 email/ngày. Bật mặc định 3 mục Thanh toán / Hợp đồng / Bảo mật sẽ cần nâng gói khi người dùng tăng.
 
 ## 4. Việc nền tảng (làm trước, dùng chung mọi module)
@@ -39,8 +39,8 @@ Thêm: **bản tổng hợp Chi nhánh 08:00** gửi email cho chủ nhà, mặc
 |---|---|---|
 | N1 | Bỏ gắn cứng SYSTEM: bảng **chính sách email theo eventType** (gửi / không / gộp, mẫu nào, bỏ qua opt-in hay không) | notification |
 | N2 | Mặc định email theo từng mục + bước chuyển đổi một lần cho các giá trị `email=true` cũ | notification |
-| N3 | `EmailProvider` hỗ trợ **đính kèm** (Resend `attachments`, giới hạn kích thước) | notification |
-| N4 | API nội bộ ở Core trả **dữ liệu cho email** (số tiền, kỳ, mã, hạn chót, địa chỉ khi được phép) vì event chỉ mang ID; và lấy **PDF biên nhận dạng byte** | core |
+| N3 | `EmailProvider` hỗ trợ **đính kèm** (Resend `attachments`, base64, tối đa 40 MB) | notification |
+| N4 | API nội bộ ở Core trả **dữ liệu cho email** (số tiền, kỳ, mã, hạn chót, địa chỉ khi được phép) vì event chỉ mang ID; và API nội bộ trả **byte PDF từ S3** (biên nhận, hợp đồng, phụ lục, hợp đồng cọc) có kiểm tra quyền + toàn vẹn | core |
 | N5 | API lấy email phải trả cả **tài khoản vừa bị khoá** cho email bảo mật | core |
 | N6 | Web + mobile: mở công tắc Email theo từng mục đã làm, giữ "Sắp có" cho mục chưa làm; mục bảo mật hiển thị "luôn gửi" | web, mobile |
 
@@ -50,7 +50,7 @@ Thêm: **bản tổng hợp Chi nhánh 08:00** gửi email cho chủ nhà, mặc
 |---|---|---|
 | 0 | N1, N2, N6 | — |
 | 1 | **Thanh toán & Hóa đơn**: email cho các event hiện có; "thanh toán thành công" kèm **biên nhận PDF** khi PDF đã sẵn (chờ worker, hoặc gửi khi PDF xong) | N3, N4 |
-| 2 | **Hợp đồng & Đặt cọc**: 14 email, link PDF; bản tổng hợp Chi nhánh | N4 |
+| 2 | **Hợp đồng & Đặt cọc**: 14 email, **đính kèm PDF hợp đồng/phụ lục đã ký từ S3**; bản tổng hợp Chi nhánh | N3, N4 |
 | 3 | **Tài khoản & Bảo mật**: KYC + khoá/mở khoá/vai trò | N5 |
 | 4 | **Yêu cầu thuê**: email + thêm hạn chót vào event | N4 |
 | 5 | **Lịch hẹn** (chống gửi trùng xác nhận + nhắc lịch) và **Tin đăng** | N4 |
