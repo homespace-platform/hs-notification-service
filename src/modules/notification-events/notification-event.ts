@@ -204,7 +204,7 @@ const templates = {
     'Khoản thanh toán của bạn đã quá hạn.',
     'paymentId',
   ],
-  // Membership orders: orderId only. REVIEW copy stays neutral because a later transaction can move PAID to REVIEW.
+  // Membership orders: orderId only. MEMBERSHIP_PAYMENT_REVIEW is no longer emitted; accepted only so old Kafka messages do not hit the DLT.
   MEMBERSHIP_ACTIVATED: [
     'PAYMENT',
     'Gói đăng tin đã được kích hoạt',
@@ -213,8 +213,8 @@ const templates = {
   ],
   MEMBERSHIP_PAYMENT_REVIEW: [
     'PAYMENT',
-    'Đơn gói đăng tin cần đối soát',
-    'Giao dịch của đơn gói đăng tin cần được đối soát. Vui lòng mở đơn hàng để kiểm tra trạng thái hiện tại.',
+    'Đơn gói đăng tin đang được xử lý',
+    'Đơn gói đăng tin của bạn đang được xử lý. Vui lòng mở đơn hàng để xem trạng thái hiện tại.',
     'orderId',
   ],
   CHAT_MESSAGE_RECEIVED: [

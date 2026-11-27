@@ -15,7 +15,7 @@ describe('membership notification acceptance',()=>{
     expect(item).toMatchObject({category:'PAYMENT',priority:'NORMAL',type,recipientId:'order-owner',
       actionPath:`/dashboard/membership/return?orderId=${orderId}`,metadata:{orderId}});
     expect(item.body).not.toMatch(/VND|ETH|SePay|hoàn tiền|chưa được kích hoạt/);
-    if(type==='MEMBERSHIP_PAYMENT_REVIEW')expect(item.body).toContain('đối soát');
+    expect(`${item.title} ${item.body}`).not.toContain('đối soát');
   });
   it.each(['amount','amountVnd','tier','provider','status','paidAt','paymentId','ownerId','wallet','txHash','reason','url','actionPath','__proto__'])
     ('rejects extra membership data %s',key=>{

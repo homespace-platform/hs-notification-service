@@ -44,7 +44,6 @@ Trigger payment: `hs-payment-service/.../service/PaymentRequestService.java` (vi
 | SETTLEMENT_RESPONSE_OVERDUE | CLS:455 | tenant hoặc landlord | Phản hồi đề xuất hoàn cọc cần được kiểm tra | Có | Quá hạn |
 | SETTLEMENT_PAYMENT_OVERDUE | CLS:466 | payer | Khoản hoàn cọc/quyết toán cần được kiểm tra | Có | Quá hạn tiền cọc |
 | MEMBERSHIP_ACTIVATED | MembershipCheckoutService:225 (SePay), EthPaymentService:185 | owner | Gói đăng tin đã được kích hoạt | **Có** (không PDF) | Biên nhận mua gói |
-| MEMBERSHIP_PAYMENT_REVIEW | MembershipCheckoutService:210,225 | owner | Đơn gói đăng tin cần đối soát | Có | Đã trả tiền nhưng chưa kích hoạt |
 | MEMBERSHIP_EXPIRING_SOON / _EXPIRED | MembershipExpiryReminderScheduler:48-49 | user | Gói thành viên sắp hết hạn / đã hết hạn | Có | Gia hạn, mất quyền đăng tin |
 | PAYMENT_DISPUTE_* (8 loại), PAYMENT_SUCCESSFUL/FAILED/OVERDUE | **không có producer** trong CORE (grep rỗng) | - | - | - | Xem mục 3 |
 

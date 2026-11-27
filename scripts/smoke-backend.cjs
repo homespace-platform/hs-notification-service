@@ -233,7 +233,7 @@ async function main() {
     }
     assert.equal((await call('/feed?category=ACCOUNT', 'GET', undefined, renter)).result.items.length, 0);
     const membershipOrderId = randomUUID().replaceAll('-', '');
-    const membershipTypes = ['MEMBERSHIP_ACTIVATED', 'MEMBERSHIP_PAYMENT_REVIEW'];
+    const membershipTypes = ['MEMBERSHIP_ACTIVATED'];
     await producer.send({ topic, acks: -1, messages: membershipTypes.flatMap(eventType => {
       const event = { version: 1, eventId: randomUUID(), eventType, occurredAt: new Date().toISOString(),
         recipients: [recipient], data: { orderId: membershipOrderId } };
@@ -244,7 +244,7 @@ async function main() {
     const membershipDeadline = Date.now() + 30000;
     while (Date.now() < membershipDeadline) {
       membershipRows = (await call('/feed?category=PAYMENT')).result.items;
-      if (membershipRows.length === 2) break;
+      if (membershipRows.length === 1) break;
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     assert.deepEqual(membershipRows.map(row => row.type).sort(), [...membershipTypes].sort());
