@@ -217,6 +217,12 @@ const templates = {
     'Đơn gói đăng tin của bạn đang được xử lý. Vui lòng mở đơn hàng để xem trạng thái hiện tại.',
     'orderId',
   ],
+  MEMBERSHIP_OVERPAYMENT_RECEIVED: [
+    'PAYMENT',
+    'Đã nhận khoản trả thừa',
+    'Khoản thanh toán thừa cho đơn gói hội viên sẽ được hoàn lại cho bạn.',
+    'orderId',
+  ],
   CHAT_MESSAGE_RECEIVED: [
     'CHAT',
     'Tin nhắn mới',
@@ -956,6 +962,8 @@ export function renderNotification(
       ? `/rent/${encodeURIComponent(event.data.listingId)}`
       : idKey === 'listingId'
       ? `/dashboard/properties/view?id=${encodeURIComponent(event.data.listingId)}`
+      : event.eventType === 'MEMBERSHIP_OVERPAYMENT_RECEIVED'
+      ? '/dashboard/invoices?tab=membership'
       : idKey === 'orderId'
         ? `/dashboard/membership/return?orderId=${encodeURIComponent(event.data.orderId)}`
       : bookingPath

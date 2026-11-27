@@ -9,6 +9,14 @@ const orderId='cb856b215fbf4d33b7f7fd54d5ce7867';
 const input=(type=types[0], overrides:Record<string,unknown>={})=>({eventId:'membership-transition',eventType:type,version:1,
   occurredAt:'2026-11-14T00:00:00.000Z',recipients:['order-owner'],data:{orderId},...overrides});
 const parse=(value:unknown)=>parseNotificationEvent(Buffer.from(JSON.stringify(value)));
+describe('membership overpayment notification',()=>{
+  it('renders the refund notice with the membership receipts path',()=>{
+    const item=renderNotification(parse(input('MEMBERSHIP_OVERPAYMENT_RECEIVED')),'order-owner');
+    expect(item).toMatchObject({category:'PAYMENT',title:'Đã nhận khoản trả thừa',actionPath:'/dashboard/invoices?tab=membership',metadata:{orderId}});
+    expect(item.body).toBe('Khoản thanh toán thừa cho đơn gói hội viên sẽ được hoàn lại cho bạn.');
+    expect(()=>parse(input('MEMBERSHIP_OVERPAYMENT_RECEIVED',{data:{orderId,amountVnd:1}}))).toThrow('Invalid notification event');
+  });
+});
 describe('membership notification acceptance',()=>{
   it.each(types)('%s uses a membership order identity and fixed authorized detail path',type=>{
     const item=renderNotification(parse(input(type)),'order-owner');
