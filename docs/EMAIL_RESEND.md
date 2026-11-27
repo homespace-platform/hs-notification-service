@@ -10,7 +10,6 @@ Giai đoạn 1: service đã có nền tảng gửi email (`EmailProvider.sendEm
 | `MAIL_FROM_ADDRESS` | Địa chỉ gửi, phải thuộc domain đã verify. Bắt buộc khi có API key. |
 | `MAIL_FROM_NAME` | Tên hiển thị, gửi dưới dạng `Tên <địa chỉ>`. Bắt buộc khi có API key. |
 | `MAIL_APP_BASE_URL` | Origin công khai của web (vd `https://homespace.id.vn`, không có `/` cuối): dùng cho logo, nút CTA và link cài đặt trong email. Bắt buộc khi có API key. |
-| `CORE_INTERNAL_BASE_URL` | Địa chỉ nội bộ của hs-core-api (vd `http://hs-core-api:8080`) để tra email người nhận qua `/internal/users/emails`. Bắt buộc khi có API key. |
 
 `compose.production.yml` truyền cả năm biến; đặt chúng trong Dokploy.
 
@@ -47,7 +46,7 @@ Script đọc `.env` (hoặc biến môi trường) và in id Resend hoặc thô
 - **Nguồn phát**: Admin portal gọi `POST /api/v1/notifications/admin/broadcast` tới Core (`NotificationBroadcastController` → `BroadcastNotificationService.enqueueAdmin`). Core ghi bảng outbox `notification_broadcast_outbox`; `BroadcastNotificationPublisher` chia người nhận (USER/ADMIN đang active) theo lô 100 và gửi Kafka `PLATFORM_ANNOUNCEMENT` v1, `sourceEventId=admin_<broadcastId>`, `data={title, body, priority, actionPath}`. Event chỉ có userId, không có email.
 - **Fan-out hiện tại**: consumer của notification-service tạo một bản ghi notification cho mỗi người nhận (`NotificationService.create`, idempotent theo `(recipientId, sourceEventId)`), rồi enqueue push (outbox bền trong Mongo) và phát realtime.
 - **Tùy chọn người dùng**: nằm ở notification-service (collection `notification_preferences`, `items[{category, push, email}]`, API `GET/PATCH /preferences`). Cờ `email` đã có sẵn nhưng trước đây mặc định `true` và không dùng.
-- **Địa chỉ email**: chỉ Core có (bảng `users`). Không đưa email vào Kafka (tránh rò rỉ dữ liệu). Notification-service gọi endpoint nội bộ mới của Core `POST /internal/users/emails` (body `{userIds}` ≤ 100, trả `[{userId, email}]` chỉ cho user active). Endpoint nằm dưới `/internal/**`: Gateway chặn, Core yêu cầu `X-Internal-Secret = GATEWAY_INTERNAL_SECRET`. Không thêm endpoint công khai. Core không lưu cờ "đã xác minh email" nên "đã xác minh" được hiểu là: user active và đã tự bật Email trong cài đặt (phải đăng nhập, mà Keycloak bắt xác minh email trước khi đăng nhập).
+- **Địa chỉ email**: chỉ Core có (bảng `users`). Không đưa email vào Kafka (tránh rò rỉ dữ liệu). Notification-service tìm Core qua Eureka (app `HS-CORE-API`, cache 30 giây, không cần biến môi trường riêng) rồi gọi endpoint nội bộ mới `POST /internal/users/emails` (body `{userIds}` ≤ 100, trả `[{userId, email}]` chỉ cho user active). Endpoint nằm dưới `/internal/**`: Gateway chặn, Core yêu cầu `X-Internal-Secret = GATEWAY_INTERNAL_SECRET`. Không thêm endpoint công khai. Core không lưu cờ "đã xác minh email" nên "đã xác minh" được hiểu là: user active và đã tự bật Email trong cài đặt (phải đăng nhập, mà Keycloak bắt xác minh email trước khi đăng nhập).
 
 Triển khai:
 

@@ -1,3 +1,4 @@
+import { EurekaDiscoveryService } from '../../infrastructure/discovery/eureka-discovery.service';
 import { ConfigService } from '@nestjs/config';
 import { jest } from '@jest/globals';
 import {
@@ -235,7 +236,14 @@ describe('EmailDeliveryService', () => {
 });
 
 describe('CoreUserEmailDirectory', () => {
-  it('posts ids with the internal secret and maps the result', async () => {
+  const secret = 's'.repeat(32);
+  const directory = (resolve: () => Promise<string>, forget = jest.fn()) =>
+    new CoreUserEmailDirectory(
+      new ConfigService({ GATEWAY_INTERNAL_SECRET: secret }),
+      { resolve, forget } as unknown as EurekaDiscoveryService,
+    );
+
+  it('finds core through Eureka, posts ids with the internal secret and maps the result', async () => {
     const fetchMock = jest
       .fn<typeof fetch>()
       .mockResolvedValue(
@@ -244,17 +252,20 @@ describe('CoreUserEmailDirectory', () => {
         ),
       );
     globalThis.fetch = fetchMock;
-    const secret = 's'.repeat(32);
-    const dir = new CoreUserEmailDirectory(
-      new ConfigService({
-        CORE_INTERNAL_BASE_URL: 'http://core:8080',
-        GATEWAY_INTERNAL_SECRET: secret,
-      }),
-    );
+    const resolve = jest.fn(async () => 'http://10.0.0.5:8081');
+    const dir = directory(resolve);
     expect((await dir.resolve(['u1', 'u2'])).get('u1')).toBe('u1@example.com');
+    expect(resolve).toHaveBeenCalledWith('HS-CORE-API');
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://core:8080/internal/users/emails');
+    expect(url).toBe('http://10.0.0.5:8081/internal/users/emails');
     expect(init.headers).toMatchObject({ 'X-Internal-Secret': secret });
     expect(JSON.parse(init.body as string)).toEqual({ userIds: ['u1', 'u2'] });
+  });
+
+  it('forgets the cached core instance after a 5xx so the next try looks it up again', async () => {
+    globalThis.fetch = jest.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 503 }));
+    const forget = jest.fn();
+    await expect(directory(async () => 'http://core:8081', forget).resolve(['u1'])).rejects.toThrow('HTTP 503');
+    expect(forget).toHaveBeenCalledWith('HS-CORE-API');
   });
 });

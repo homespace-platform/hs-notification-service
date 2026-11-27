@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { EurekaModule } from '../../infrastructure/discovery/eureka.module';
 import { AuthenticationModule } from '../authentication/authentication.module';
 import {
   NotificationDocument,
@@ -26,6 +27,7 @@ import { NotificationDeliveryService } from './notification-delivery.service';
 
 @Module({
   imports: [
+    EurekaModule,
     ConfigModule,
     AuthenticationModule,
     MongooseModule.forFeature([

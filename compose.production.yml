@@ -38,7 +38,6 @@ services:
             MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:?}
             MAIL_FROM_NAME: ${MAIL_FROM_NAME:?}
             MAIL_APP_BASE_URL: ${MAIL_APP_BASE_URL:?}
-            CORE_INTERNAL_BASE_URL: ${CORE_INTERNAL_BASE_URL:?}
             NODE_ENV: ${NODE_ENV:?}
 
 networks:
