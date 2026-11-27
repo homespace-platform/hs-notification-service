@@ -538,6 +538,7 @@ export interface NotificationEvent {
     | keyof typeof membershipExpiryTemplates
     | keyof typeof complaintTemplates
     | keyof typeof operationalTemplates
+    | 'BRANCH_DAILY_DIGEST'
     | 'NEWS_PUBLISHED'
     | 'CHAT_ALERT_REQUESTED'
     | 'PLATFORM_ANNOUNCEMENT'
@@ -604,6 +605,7 @@ export function parseNotificationEvent(
         isReturnSettlementType(input.eventType) ||
         isKycType(input.eventType) || isMembershipExpiryType(input.eventType) ||
         isComplaintType(input.eventType) || isOperationalType(input.eventType) ||
+        input.eventType === 'BRANCH_DAILY_DIGEST' ||
         input.eventType === 'NEWS_PUBLISHED' ||
         input.eventType === 'CHAT_ALERT_REQUESTED' ||
         input.eventType === 'PLATFORM_ANNOUNCEMENT' ||
@@ -640,6 +642,14 @@ export function parseNotificationEvent(
         !identifier(event.data.conversationId) ||
         !identifier(event.data.messageId) ||
         event.eventId !== `chat_${event.data.messageId}`
+      ) throw new InvalidNotificationEvent();
+    } else if (event.eventType === 'BRANCH_DAILY_DIGEST') {
+      // One owner and only the number of open items (canonical positive integer).
+      if (
+        event.recipients.length !== 1 ||
+        Object.keys(event.data).join(',') !== 'attentionCount' ||
+        typeof event.data.attentionCount !== 'string' ||
+        !/^[1-9]\d{0,14}$/.test(event.data.attentionCount)
       ) throw new InvalidNotificationEvent();
     } else if (event.eventType === 'NEWS_PUBLISHED') {
       if (
@@ -798,6 +808,16 @@ export function renderNotification(
     const [title, body] = operationalTemplates[event.eventType];
     return { ...common, category: 'SYSTEM', title, body,
       actionPath: `/operations/system-alerts?incidentId=${encodeURIComponent(event.data.incidentId)}`, metadata: {...event.data} };
+  }
+  if (event.eventType === 'BRANCH_DAILY_DIGEST') {
+    return {
+      ...common,
+      category: 'SYSTEM',
+      title: 'Việc cần chú ý hôm nay',
+      body: `Bạn có ${event.data.attentionCount} việc cần chú ý tại các chi nhánh.`,
+      actionPath: '/dashboard/branches',
+      metadata: {},
+    };
   }
   if (event.eventType === 'NEWS_PUBLISHED') {
     return {

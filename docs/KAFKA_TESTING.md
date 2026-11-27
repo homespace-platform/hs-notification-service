@@ -18,6 +18,7 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | CHAT_MESSAGE_RECEIVED                                          | conversationId                 | CHAT        |
 | CHAT_ALERT_REQUESTED                                           | conversationId, messageId (only keys), exactly one recipient | CHAT |
 | PLATFORM_ANNOUNCEMENT                                          | title (1..200), body (1..2000); admin form also requires priority and actionPath | SYSTEM |
+| BRANCH_DAILY_DIGEST                                            | attentionCount (only key, canonical positive integer string, 1–15 digits), exactly one branch owner | SYSTEM |
 | ROLE_PERMISSIONS_CHANGED                                       | roleName (only key, `^[A-Z][A-Z0-9_]{0,49}$`); 1..100 recipients; realtime permission-refresh signal, generic copy, `/notifications` | SYSTEM |
 | NEWS_PUBLISHED                                                 | newsId, slug (only keys)       | NEWS        |
 | ACCOUNT_ROLE_CHANGED, ACCOUNT_DISABLED, ACCOUNT_ENABLED        | none: `data` must be exactly `{}` | ACCOUNT  |
@@ -33,6 +34,18 @@ The exact v1 envelope contains `eventId`, `eventType`, `version: 1`, `occurredAt
 | PAYMENT_OBLIGATION_OVERDUE | paymentId (only key), exactly one recipient | PAYMENT |
 
 Resource events use fixed templates. Booking `data.recipientSide` accepts only `OWNER` or `RENTER`: OWNER opens `/dashboard/viewing-schedules?appointmentId=<bookingId>`, RENTER opens `/dashboard/viewing-schedules/my-bookings?appointmentId=<bookingId>`. Booking events may also include `listingTitle` (plain text, 1–120 characters), `appointmentDate` (`YYYY-MM-DD`) and `startTime` (`HH:mm`) so the notification body identifies the listing and viewing time. `BOOKING_RESCHEDULE_REQUESTED` uses the proposed date/time; other booking events use the current date/time. Date and time appear together when both are present. The service constructs routes and content from these validated fields; producer URLs and other data fields are rejected. Legacy booking data containing only `bookingId` remains accepted and opens `/notifications`, as do other non-listing resource types. `bookingId` and the optional side remain in metadata. If a system event targets both sides, publish separate envelopes with the correct side and recipients. A cancellation event alone cannot determine which side receives it.
+
+## Branch daily digest
+
+Core enqueues at 08:00 Asia/Ho_Chi_Minh when an owner has attention items. The contract outbox uses the same UUID for the event ID and Kafka key, derived from the UTF-8 string `BRANCH_DAILY_DIGEST:<ownerId>:<Vietnam local date>`. Keep the event ID on replay. The resulting feed entry has priority `NORMAL`, empty metadata and the fixed action path `/dashboard/branches`.
+
+```json
+{"eventId":"550e8400-e29b-41d4-a716-446655440000","eventType":"BRANCH_DAILY_DIGEST","version":1,"occurredAt":"2026-11-27T01:00:00.000Z","recipients":["owner-a"],"data":{"attentionCount":"5"}}
+```
+
+Deploy all notification consumers before Core produces this event. Roll back Core first. Older consumers quarantine the digest as `INVALID_EVENT` and commit the offset once the DLT write succeeds. Recover from the retained source record with the same event ID after updating the consumers.
+
+Run `npm test -- --runInBand src/modules/notification-events` for rendering, strict payload checks, redacted DLT and replay identity. In a test environment, publish the fixture twice with the same event ID and verify one SYSTEM entry for the addressed owner, zero entries for a different user, and normal delivery of an existing contract event.
 
 ## Chat alert
 

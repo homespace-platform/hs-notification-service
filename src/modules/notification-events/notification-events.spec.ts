@@ -239,6 +239,13 @@ describe('booking notification contract', () => {
 });
 
 describe('Kafka delivery', () => {
+  const digest = {
+    ...event,
+    eventId: 'digest-1',
+    eventType: 'BRANCH_DAILY_DIGEST',
+    recipients: ['owner-a'],
+    data: { attentionCount: '2' },
+  };
   const setup = () => {
     const create = jest
       .fn<NotificationService['create']>()
@@ -277,6 +284,33 @@ describe('Kafka delivery', () => {
     expect(x.create.mock.invocationCallOrder[1]).toBeLessThan(
       x.commitOffsets.mock.invocationCallOrder[0],
     );
+  });
+  it('replays a digest with the same owner and id and still processes an older event type', async () => {
+    const x = setup();
+    const digestMessage = { ...x.payload, message: { ...x.payload.message, value: encode(digest) } };
+    await x.service.consume(digestMessage);
+    await x.service.consume(digestMessage);
+    expect(x.create.mock.calls.map(([input]) => [input.recipientId, input.sourceEventId]))
+      .toEqual([['owner-a', 'digest-1'], ['owner-a', 'digest-1']]);
+    expect(x.create).toHaveBeenCalledWith(expect.objectContaining({
+      category: 'SYSTEM', actionPath: '/dashboard/branches', metadata: {},
+    }));
+    await x.service.consume(x.payload);
+    expect(x.create).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'LISTING_APPROVED', recipientId: 'bob', sourceEventId: 'event-1',
+    }));
+    expect(x.send).not.toHaveBeenCalled();
+    expect(x.commitOffsets).toHaveBeenCalledTimes(3);
+  });
+  it('quarantines malformed digest data without copying recipients or private fields', async () => {
+    const x = setup();
+    x.payload.message.value = encode({ ...digest, data: { ...digest.data, roomCode: 'private-room' } });
+    await x.service.consume(x.payload);
+    expect(x.create).not.toHaveBeenCalled();
+    const dlt = JSON.stringify(x.send.mock.calls);
+    expect(dlt).toContain('INVALID_EVENT');
+    expect(dlt).not.toMatch(/private-room|owner-a/);
+    expect(x.send.mock.invocationCallOrder[0]).toBeLessThan(x.commitOffsets.mock.invocationCallOrder[0]);
   });
   it('retries a partial fanout then completes without quarantine', async () => {
     const x = setup();
