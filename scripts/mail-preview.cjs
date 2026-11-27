@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const {
   renderSystemBroadcastEmail,
-} = require('../dist/modules/notification-delivery/email/templates/system-broadcast.template');
+} = require('../dist/modules/notification-delivery/email/templates/system');
 
 const baseUrl = process.env.MAIL_APP_BASE_URL || 'https://homespace.id.vn';
 fs.mkdirSync('mail-preview', { recursive: true });

@@ -57,10 +57,25 @@ Triển khai:
 
 ## Layout email dùng chung
 
-Mọi email dùng một layout duy nhất: `src/modules/notification-delivery/email/templates/email-layout.ts` (`renderEmail`). Template viết tay bằng chuỗi TypeScript (không dùng MJML/React Email): bảng HTML, CSS inline, rộng tối đa 600px, mọi khối đặt `bgcolor`/`color` tường minh để chế độ tối không làm mất chữ, nút CTA dạng bảng (bulletproof, Outlook giữ màu nền), logo PNG lấy từ `MAIL_APP_BASE_URL + /logo/homespace-horizontal-logo-removebg.png`, màu chính `#2563eb`/`#163b70`, tông badge: `primary` (thường), `warning` (quan trọng), `danger` (khẩn cấp). Footer cố định: "HomeSpace – Tìm nơi ở lý tưởng", lý do nhận email kèm link `/settings/notifications`, "Đây là email tự động, vui lòng không trả lời.". Bản text thuần sinh từ cùng dữ liệu.
+Mọi email dùng một layout duy nhất. Template là file Handlebars `.hbs` (dependency `handlebars` ghim đúng phiên bản 4.7.10), nằm ở `src/modules/notification-delivery/email/templates/`:
 
-```ts
-renderEmail({ baseUrl, category, preheader, heading, badge?, bodyParagraphs, detailRows?, cta?, footerNote? }) // -> { html, text }
+```
+layout/base.hbs        khung chung: logo (MAIL_APP_BASE_URL + /logo/homespace-horizontal-logo-removebg.png), ô nội dung, footer
+components/*.hbs       partial tự đăng ký: badge, heading, paragraph, details, detail-row, button, footer-note, footer
+system/broadcast.hbs   email "Thông báo hệ thống" + system/index.ts (tiêu đề email, hàm render)
+account/ listing/ appointment/ contract/ payment/ chat/ rental-request/ news/   chỉ có README.md (đúng 9 mục trong Cài đặt → Thông báo)
 ```
 
-Thêm email cho module mới: tạo `email/templates/<module>.template.ts` export hàm nhận dữ liệu nghiệp vụ, trả `{ subject, ...renderEmail({...}) }` (xem `system-broadcast.template.ts`); văn bản người dùng được escape sẵn, không tự ghép HTML. Rồi gọi từ một dispatcher/job tương tự `EmailDeliveryService` (kiểm tra tùy chọn, địa chỉ, idempotency key, throttle). Xem thử: `npm run build && npm run mail:preview` ghi `mail-preview/{normal,important,urgent}.html` (đã gitignore) để mở bằng trình duyệt.
+Quy ước: bảng HTML, CSS inline, rộng tối đa 600px, mọi khối đặt màu tường minh để chế độ tối không làm mất chữ, nút CTA dạng bảng (Outlook giữ màu nền), màu chính `#2563eb`/`#163b70`, badge `primary` (thường) / `warning` (quan trọng) / `danger` (khẩn cấp). Handlebars chạy `strict: true` (thiếu biến thì lỗi), `{{x}}` luôn escape, chỉ ô `{{{content}}}` của layout là raw. Mỗi template được compile một lần khi khởi động (`template-engine.ts`); thiếu thư mục/file thì service không khởi động và báo rõ. File `.hbs` được copy vào `dist` qua `assets` trong `nest-cli.json`. Bản text thuần sinh từ cùng dữ liệu.
+
+```ts
+renderEmail({ template, baseUrl, category, preheader, heading, badge?, bodyParagraphs, detailRows?, cta?, footerNote? }) // -> { html, text }
+```
+
+### Thêm email cho module mới
+
+1. Tạo `templates/<category>/<ten>.hbs` (copy `system/broadcast.hbs`, dùng các partial `{{> components/...}}`; có thể sửa thứ tự/bổ sung khối). Xóa dòng liệt kê trong README của thư mục đó.
+2. Tạo `templates/<category>/index.ts` export hàm `render...Email(data)` gọi `renderEmail({ template: '<category>/<ten>', category: '<tên mục>', ... })` và hàm tiêu đề email (xem `system/index.ts`).
+3. Thêm test (escape, tiêu đề, link) cạnh `email/email.spec.ts`.
+4. Viết dispatcher/job kiểu `EmailDeliveryService`: kiểm tra tùy chọn Email của mục, địa chỉ qua `UserEmailDirectory`, `Idempotency-Key`, throttle.
+5. Xem thử: `npm run build && npm run mail:preview` ghi `mail-preview/{normal,important,urgent}.html` (đã gitignore), mở bằng trình duyệt.

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { setTimeout as delay } from 'node:timers/promises';
-import { renderSystemBroadcastEmail } from './email/templates/system-broadcast.template';
+import { renderSystemBroadcastEmail } from './email/templates/system';
 import { EMAIL_MAX_ATTEMPTS, EmailOutbox, type EmailJob } from './email-outbox';
 import { EmailProvider, EmailSendError } from './email.provider';
 import { UserEmailDirectory } from './user-email.directory';

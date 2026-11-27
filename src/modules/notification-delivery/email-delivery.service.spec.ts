@@ -141,7 +141,7 @@ describe('EmailDeliveryService', () => {
       subject: '[HomeSpace] [Quan trọng] T <x>',
       idempotencyKey: 'bc1:in',
     });
-    expect(t.sent[0].html).toContain('T &#60;x&#62;');
+    expect(t.sent[0].html).toContain('T &lt;x&gt;');
     expect(t.outbox.jobs.get('n-noaddr')!.status).toBe('skipped');
   });
 
