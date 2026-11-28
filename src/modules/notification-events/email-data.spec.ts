@@ -45,3 +45,26 @@ describe('additive email data on notification events', () => {
     expect(() => parse('PAYMENT_RECEIPT_CONFIRMED', { receiptId: 'r1' })).toThrow('Invalid notification event');
   });
 });
+
+describe('payload shapes produced by hs-core-api (wave 1)', () => {
+  it('accepts integer amounts and expiresAt exactly as Core sends them', () => {
+    expect(renderNotification(parse('PAYMENT_RECEIPT_CONFIRMED', {
+      paymentId: 'p1', receiptId: 'r1', receiptNumber: 'HS-20261128-0001', amount: 1500000,
+    }), 'u1').metadata).toEqual({ paymentId: 'p1', receiptId: 'r1', receiptNumber: 'HS-20261128-0001', amount: '1500000' });
+    expect(renderNotification(parse('PAYMENT_DUE_SOON', { paymentId: 'p1', amount: 49000, dueAt: '2026-12-01T03:00:00Z' }), 'u1').metadata)
+      .toMatchObject({ amount: '49000', dueAt: '2026-12-01T03:00:00Z' });
+    expect(renderNotification(parse('MEMBERSHIP_ACTIVATED', { orderId: 'o1', amount: 49000 }), 'u1').metadata)
+      .toMatchObject({ orderId: 'o1', amount: '49000' });
+    expect(renderNotification(parse('MEMBERSHIP_OVERPAYMENT_RECEIVED', { orderId: 'o1', overpaymentId: 'op1', amount: 49000 }), 'u1').metadata)
+      .toMatchObject({ overpaymentId: 'op1', amount: '49000' });
+    for (const type of ['MEMBERSHIP_EXPIRING_SOON', 'MEMBERSHIP_EXPIRED']) {
+      expect(renderNotification(parse(type, { expiresAt: '2026-12-28T03:25:46Z' }), 'u1').metadata)
+        .toMatchObject({ expiresAt: '2026-12-28T03:25:46Z' });
+    }
+  });
+
+  it('drops negative or fractional amounts instead of failing the event', () => {
+    expect(renderNotification(parse('MEMBERSHIP_ACTIVATED', { orderId: 'o1', amount: -1 }), 'u1').metadata).toEqual({ orderId: 'o1' });
+    expect(renderNotification(parse('MEMBERSHIP_ACTIVATED', { orderId: 'o1', amount: 1.5 }), 'u1').metadata).toEqual({ orderId: 'o1' });
+  });
+});

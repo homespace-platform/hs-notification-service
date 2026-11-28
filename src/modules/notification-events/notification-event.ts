@@ -589,7 +589,7 @@ const bookingTime = (value: unknown): value is string =>
   typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 
 // Additive email data. Malformed values are dropped, never rejected: the in-app notification must not hit the DLT for an optional email field.
-const EMAIL_DATA_KEYS = ['receiptId', 'orderId', 'overpaymentId', 'contractId', 'agreementType', 'legacy', 'amount', 'period', 'dueAt', 'receiptNumber'] as const;
+const EMAIL_DATA_KEYS = ['receiptId', 'orderId', 'overpaymentId', 'contractId', 'agreementType', 'legacy', 'amount', 'period', 'dueAt', 'expiresAt', 'receiptNumber'] as const;
 const emailDataAllowed = (eventType: string): boolean =>
   isPaymentType(eventType) || isInvoiceType(eventType) || isAgreementType(eventType) || isAmendmentType(eventType) ||
   isRenewalType(eventType) || isTerminationType(eventType) || isReturnSettlementType(eventType) || isMembershipExpiryType(eventType) ||
@@ -601,8 +601,13 @@ const emailDataValue = (key: (typeof EMAIL_DATA_KEYS)[number], value: unknown): 
     case 'agreementType':
       return typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,39}$/.test(value) ? value : undefined;
     case 'amount':
+      // Core sends integer VND; keep it as a digit string for the templates.
+      return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+        ? String(value)
+        : typeof value === 'string' && /^\d{1,15}$/.test(value) ? value : undefined;
     case 'period':
     case 'dueAt':
+    case 'expiresAt':
     case 'receiptNumber':
       return plainText(value, 64) ? value : undefined;
     default:
