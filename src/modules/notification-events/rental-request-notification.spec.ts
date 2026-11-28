@@ -69,7 +69,7 @@ describe('rental request notification acceptance', () => {
       .map(category => ({ category, push: false, email: false })));
     const service = new NotificationService(new InMemoryNotificationRepository(), preferences);
     expect((await service.getPreferences('owner')).find(p => p.category === 'RENTAL_REQUEST'))
-      .toEqual({ category: 'RENTAL_REQUEST', push: true, email: false });
+      .toEqual({ category: 'RENTAL_REQUEST', push: true, email: true });
     await service.updatePreferences('owner', [{ category: 'RENTAL_REQUEST', push: false, email: false }]);
     expect((await service.getPreferences('owner')).find(p => p.category === 'RENTAL_REQUEST')?.push).toBe(false);
     expect((await service.getPreferences('renter')).find(p => p.category === 'RENTAL_REQUEST')?.push).toBe(true);

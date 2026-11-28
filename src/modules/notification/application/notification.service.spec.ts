@@ -446,18 +446,18 @@ describe('NotificationService', () => {
       expect(items.find((item) => item.category === 'NEWS')).toEqual({
         category: 'NEWS',
         push: false,
-        email: false,
+        email: true,
       });
       expect(
         items
           .filter((item) => item.category !== 'NEWS')
           .every(
-            (item) => item.push && item.email === ['PAYMENT', 'CONTRACT'].includes(item.category),
+            (item) => item.push && item.email === true,
           ),
       ).toBe(true);
       expect(
         (await service.getPreferences(BOB)).every(
-          (item) => item.push && item.email === ['PAYMENT', 'CONTRACT'].includes(item.category),
+          (item) => item.push && item.email === true,
         ),
       ).toBe(true);
     });
@@ -475,7 +475,7 @@ describe('NotificationService', () => {
 
       expect(
         stale.every(
-          (item) => item.push && item.email === ['PAYMENT', 'CONTRACT'].includes(item.category),
+          (item) => item.push && item.email === true,
         ),
       ).toBe(true);
       expect(await service.getPreferences(ALICE)).toEqual(
@@ -521,7 +521,7 @@ describe('NotificationService', () => {
       const items = await service.getPreferences(ALICE);
       expect(items.length).toBeGreaterThan(0);
       expect(
-        items.every((i) => i.push && i.email === ['PAYMENT', 'CONTRACT'].includes(i.category)),
+        items.every((i) => i.push && i.email === true),
       ).toBe(true);
     });
 

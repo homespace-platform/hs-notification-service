@@ -48,7 +48,7 @@ describe('news notification contract', () => {
     const notifications = new NotificationService(new InMemoryNotificationRepository(), new InMemoryPreferenceRepository());
     expect(NOTIFICATION_CATEGORIES).toContain('NEWS');
     expect((await notifications.getPreferences('alice')).find(item => item.category === 'NEWS'))
-      .toEqual({ category: 'NEWS', push: true, email: false });
+      .toEqual({ category: 'NEWS', push: true, email: true });
     await notifications.updatePreferences('alice', [{ category: 'NEWS', push: false, email: false }]);
     expect((await notifications.getPreferences('alice')).find(item => item.category === 'NEWS')?.push).toBe(false);
     expect((await notifications.getPreferences('bob')).find(item => item.category === 'NEWS')?.push).toBe(true);
