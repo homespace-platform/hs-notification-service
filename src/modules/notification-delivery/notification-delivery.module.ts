@@ -25,6 +25,8 @@ import { EmailProvider } from './email.provider';
 import { CoreUserEmailDirectory, UserEmailDirectory } from './user-email.directory';
 import { FirebasePushProvider } from './firebase-push.provider';
 import { NotificationDeliveryService } from './notification-delivery.service';
+import { DeliveryHealthController, SystemHealthViewGuard } from './delivery-health.controller';
+import { DeliveryHealthService } from './delivery-health.service';
 
 @Module({
   imports: [
@@ -42,8 +44,10 @@ import { NotificationDeliveryService } from './notification-delivery.service';
       },
     ]),
   ],
-  controllers: [DeviceController],
+  controllers: [DeviceController, DeliveryHealthController],
   providers: [
+    DeliveryHealthService,
+    SystemHealthViewGuard,
     NotificationDeliveryService,
     FirebasePushProvider,
     EmailProvider,
