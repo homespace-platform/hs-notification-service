@@ -6,6 +6,8 @@ Yêu cầu Node.js `>=22.14.0`.
 
 Hướng dẫn đầy đủ: [SETUP_AND_TEST.md](docs/SETUP_AND_TEST.md) — env, toàn bộ REST API, Kafka UI, realtime và Firebase. Kết quả kiểm thử: [NOTIFICATION_PROGRESS.md](docs/NOTIFICATION_PROGRESS.md). Thử gửi thông báo từ admin: [ADMIN_BROADCAST_TESTING.md](docs/ADMIN_BROADCAST_TESTING.md).
 
+Admin delivery aggregates: [ADMIN_DELIVERY_HEALTH.md](docs/ADMIN_DELIVERY_HEALTH.md) — verified ADMIN + `SYSTEM_HEALTH_VIEW`, read-only email/push counts and explicit unavailable Kafka/loop sources.
+
 ## Chạy local
 
 ```powershell
