@@ -1,75 +1,78 @@
-# Email module "Tài khoản & Bảo mật" (category ACCOUNT)
+# Email module "Tài khoản & Bảo mật" (category ACCOUNT) - kiểm tra lại 28/11
 
-Kết quả audit chỉ đọc. Mọi đường dẫn tương đối với `D:\Projects\homespace`. Viết tắt: NS = hs-notification-service, CORE = hs-core-api.
+Chỉ đọc code. Đường dẫn tương đối `D:\Projects\homespace`. NS = hs-notification-service, CORE = hs-core-api (U = `hs-user-service/src/main/java/com/hs/user`, P = `hs-payment-service/src/main/java/com/hs/payment`).
 
-## 0. Hiện trạng nền tảng (bằng chứng)
-- Email hiện chỉ gửi cho `SYSTEM` + `PLATFORM_ANNOUNCEMENT`, opt-in (`NS/src/modules/notification-delivery/email-outbox.ts:35,174-176`; `email-delivery.service.ts:58-62,128`). Template duy nhất: `templates/system/index.ts`. Idempotency job: `notificationId` unique (`email-outbox.ts:51`), Resend key `sourceEventId:recipientId` (`email-delivery.service.ts:135`).
-- Event Kafka ACCOUNT không có email người nhận, chỉ có `recipients=[userId]`; địa chỉ lấy qua `UserEmailDirectory` (`email-delivery.service.ts:78`, `user-email.directory.ts:9`).
-- Mọi event ACCOUNT: `data` rỗng hoặc chỉ `{attemptId}`; schema từ chối field lạ (`NS/src/modules/notification-events/coverage-completion.spec.ts:24-29`). Copy in-app: `notification-event.ts:229-241` (role/disable/enable), `:468-470` (KYC).
-- Pref đã có cờ `email` theo category (`email-outbox.ts:176` chỉ đọc SYSTEM; `mongo-notification-preference.repository.ts:41` reset email=false).
+## Kết luận nhanh
+- Core phát 6 eventType ACCOUNT (3 tài khoản + 3 KYC), consumer map đủ, KHÔNG có event chết, KHÔNG có event unmapped (DLT).
+- **LỖI CHẶN**: `/internal/users/emails` chỉ trả user `active=true` => email "tài khoản bị khóa" sẽ bị bỏ qua (`no-address`). Chi tiết mục 5.
+- Chưa có email nào cho ACCOUNT: `NotificationService` chỉ enqueue email cho `SYSTEM/PLATFORM_ANNOUNCEMENT` (`NS/src/modules/notification/application/notification.service.ts:111-114`); template `account/` mới chỉ có README.
+- Core sửa 28/11 không đổi module này (writer/trigger giữ nguyên so với báo cáo cũ; đã đối chiếu từng file:line).
 
-## 1. Bảng event
-| eventType | Trigger (file:line) | Người nhận | Tiêu đề in-app | Email? | Lý do |
+## 1. Bảng đầy đủ
+| eventType | Khi nào phát (file:line) | Người nhận | Tiêu đề hiện tại | Email? | Lý do |
 |---|---|---|---|---|---|
-| ACCOUNT_DISABLED | `CORE/hs-user-service/.../service/impl/UserServiceImpl.java:353-356` (updateUserStatus, chỉ khi đổi trạng thái; bỏ qua nếu actor = chính chủ, `AccountNotificationWriter.java:46`) | Chủ tài khoản bị khóa | Tài khoản đã bị vô hiệu hóa | Có | Bảo mật, người dùng không đăng nhập được nên không thấy bell; email là kênh duy nhất còn lại |
-| ACCOUNT_ENABLED | `UserServiceImpl.java:353-356` | Chủ tài khoản | Tài khoản đã được kích hoạt lại | Có | Báo kích hoạt lại, cũng là cảnh báo nếu không phải chủ ý |
-| ACCOUNT_ROLE_CHANGED | `UserServiceImpl.java:120-123` (admin updateUser, chỉ khi `roleChanged`) | Chủ tài khoản | Quyền truy cập tài khoản đã thay đổi | Có | Thay đổi quyền là sự kiện bảo mật |
-| KYC_VERIFIED (VNPT) | `.../service/kyc/VnptKycStore.java:133,137-139` | Chủ KYC | Kết quả xác minh danh tính | Có | Kết quả quan trọng, mở khóa chức năng (gate) |
-| KYC_VERIFIED (ADMIN thủ công) | `.../kyc/AdminKycService.java:70,75` (writer chỉ cho ADMIN+VERIFIED, `AccountNotificationWriter.java:68-69`) | Chủ KYC | như trên | Có | Cùng loại, dùng chung template |
-| KYC_REJECTED (VNPT) | `VnptKycStore.java:129,131,137-139` | Chủ KYC | Xác minh danh tính chưa được chấp nhận | Có | Cần hành động lại; KHÔNG kèm lý do (rejectionReason ở `:129,131` chứa thông tin riêng) |
-| KYC_RETRY_REQUIRED | `VnptKycStore.java:99`; nhắc định kỳ `KycRetryNoticeScheduler.java:34-37` | Chủ KYC | Cần thực hiện lại xác minh danh tính | Có (chỉ lần từ `VnptKycStore:99`) | Cần hành động. Scheduler nhắc lặp: không email để tránh spam, chỉ in-app |
-| Cập nhật hồ sơ | `UserServiceImpl.java:286-306` | Không có event | - | Không (chưa có) | Người dùng tự thao tác, không đáng email. Đổi email/SĐT nằm ở mục Gap |
-| Đổi mật khẩu | `UserServiceImpl.java:224-227` | Không có event | - | Gap | Xem mục 3 |
-| Đăng nhập thiết bị mới | không có | - | - | Gap | Xem mục 3 |
-| Đổi/thêm/xóa tài khoản ngân hàng | `CORE/hs-payment-service/.../BankAccountService.java:27,82,109,127` | Không có event | - | Gap | Xem mục 3 |
-| MEMBERSHIP_EXPIRING_SOON/EXPIRED | `AccountNotificationWriter.java:81-84` (category PAYMENT) | - | - | Ngoài module | Thuộc module Thanh toán |
+| ACCOUNT_DISABLED | `U/service/impl/UserServiceImpl.java:353-356` (updateUserStatus, chỉ khi `statusChanged`, `:340`; admin tự khóa mình bị chặn `:325`) | Chủ tài khoản bị khóa | Tài khoản đã bị vô hiệu hóa (`NS notification-event.ts:240`, URGENT `:18`) | Có (luôn gửi) | Bảo mật; người dùng không đăng nhập được nên không thấy bell |
+| ACCOUNT_ENABLED | `UserServiceImpl.java:353-356` | Chủ tài khoản | Tài khoản đã được kích hoạt lại (`:244`) | Có (luôn gửi) | Xác nhận mở khóa, cũng là cảnh báo nếu không chủ ý |
+| ACCOUNT_ROLE_CHANGED | `UserServiceImpl.java:120-123` (admin updateUser, chỉ khi `roleChanged`) | Chủ tài khoản | Quyền truy cập tài khoản đã thay đổi (`:236`) | Có (luôn gửi) | Đổi quyền là sự kiện bảo mật |
+| KYC_VERIFIED (VNPT) | `U/service/kyc/VnptKycStore.java:133,137-139` | Chủ KYC | Kết quả xác minh danh tính (`:474`) | Có | Mở khóa chức năng cần KYC |
+| KYC_VERIFIED (ADMIN thủ công, 27/11) | `U/service/kyc/AdminKycService.java:75`; writer cho phép ADMIN chỉ với VERIFIED (`U/notification/AccountNotificationWriter.java:68-69`) | Chủ KYC | như trên | Có | Cùng template; người dùng cần biết admin đã xác minh hộ. Không nêu nhà cung cấp/tên admin |
+| KYC_REJECTED | `VnptKycStore.java:129,131,137-139` (gồm cả "CCCD đã dùng ở tài khoản khác") | Chủ KYC | Xác minh danh tính chưa được chấp nhận (`:475`) | Có | Cần hành động lại; KHÔNG kèm `rejectionReason` |
+| KYC_RETRY_REQUIRED | `VnptKycStore.java:96-100` (bước provider lỗi) và `U/service/kyc/KycRetryNoticeScheduler.java:37` (phiên hết hạn, chỉ user active, `:33`) | Chủ KYC | Cần thực hiện lại xác minh danh tính (`:476`, HIGH `:23`) | Có | Cần hành động. Cả hai đường dùng chung cờ `retryNoticeSentAt` + eventId xác định (`writer:88-89`) => chỉ phát MỘT lần/phiên, báo cáo cũ ghi "nhắc lặp" là SAI, không có nguy cơ spam |
+| (không event) cập nhật hồ sơ | `UserServiceImpl.java:286-306` | - | - | Không | Người dùng tự thao tác; riêng đổi email/SĐT/username xem mục 3 |
+| (không event) đổi mật khẩu | `UserServiceImpl.java:224-227` | - | - | Gap | Mục 3 |
+| (không event) thêm/sửa/xóa/đổi mặc định ngân hàng | `P/service/BankAccountService.java:27,82,109,127` | - | - | Gap | Mục 3 |
+| MEMBERSHIP_EXPIRING_SOON/EXPIRED | `AccountNotificationWriter.java:81-84` (category PAYMENT, map `:477`) | Chủ gói | - | Ngoài module | Thuộc module Thanh toán/Gói thành viên, không tính ở đây |
 
-## 2. Chi tiết cho từng event "Có"
-Quy ước chung: layout `renderEmail` với `category: 'Tài khoản & Bảo mật'`, badge theo mức; CTA mở `${MAIL_APP_BASE_URL}/settings/account-security` (route cố định, `coverage-completion.spec.ts:6`); idempotency Resend `<sourceEventId>:<recipientId>` (giữ cơ chế `email-delivery.service.ts:135`; bỏ `replace(/^admin_/)` chỉ áp cho SYSTEM). `sourceEventId` KYC xác định (`UUID.nameUUIDFromBytes(type:recipient:attemptId)`, `AccountNotificationWriter.java:88`), role/disable/enable dùng `randomUUID` (`:47`) nên chống trùng dựa vào unique `(recipientId, sourceEventId)` ở Kafka consumer.
+Đếm: 6 eventType Core phát; 0 chết; 0 unmapped. Không bị ảnh hưởng bởi việc bỏ REVIEW / đơn PAID của Gói thành viên (khác module).
 
-| Event | Subject | Dòng chi tiết | CTA | Mặc định |
+## 2. Email "Có"
+Chung: layout `renderEmail` category "Tài khoản & Bảo mật"; nút mở `${MAIL_APP_BASE_URL}/settings/account-security` (route cố định, `NS/.../coverage-completion.spec.ts:6`). **Đính kèm: không** (không có PDF nào). Khóa chống trùng: job `notificationId` unique (`email-outbox.ts:51`), Resend `<sourceEventId>:<recipientId>` (`email-delivery.service.ts:135`; không dùng `replace(/^admin_/)` cho ACCOUNT), notification unique `(recipientId, sourceEventId)` (`notification.schema.ts:64`). KYC có sourceEventId xác định (`writer:88`); role/disable/enable dùng `randomUUID` (`writer:47`), outbox retry giữ nguyên eventId nên không trùng.
+
+| Event | Subject | Dòng thông tin | Nút | Mặc định |
 |---|---|---|---|---|
-| ACCOUNT_DISABLED | `[HomeSpace] [Khẩn cấp] Tài khoản của bạn đã bị vô hiệu hóa` | Trạng thái: Đã vô hiệu hóa; Thời gian: occurredAt (giờ VN); Cách xử lý: liên hệ hỗ trợ | "Liên hệ hỗ trợ" (mailto/trang hỗ trợ) | Luôn gửi, không tắt được |
-| ACCOUNT_ENABLED | `[HomeSpace] Tài khoản đã được kích hoạt lại` | Trạng thái: Đang hoạt động; Thời gian | "Đăng nhập" | Luôn gửi, không tắt được |
-| ACCOUNT_ROLE_CHANGED | `[HomeSpace] [Quan trọng] Quyền truy cập tài khoản đã thay đổi` | Thời gian; "Do quản trị viên thay đổi"; lời nhắc liên hệ hỗ trợ nếu không mong đợi | "Xem tài khoản và bảo mật" | Luôn gửi, không tắt được |
-| KYC_VERIFIED | `[HomeSpace] Xác minh danh tính đã hoàn tất` | Trạng thái: Đã xác minh; Thời gian | "Xem tài khoản" | BẬT (người dùng tắt được qua pref ACCOUNT) |
-| KYC_REJECTED | `[HomeSpace] [Quan trọng] Xác minh danh tính chưa được chấp nhận` | Trạng thái: Chưa được chấp nhận; Thời gian; hướng dẫn thử lại chung | "Xác minh lại" | BẬT |
+| ACCOUNT_DISABLED | `[HomeSpace] [Khẩn cấp] Tài khoản của bạn đã bị vô hiệu hóa` | Trạng thái: Đã vô hiệu hóa; Thời gian (giờ VN, từ occurredAt); Cách xử lý: liên hệ hỗ trợ | "Liên hệ hỗ trợ" (trang/mailto hỗ trợ, cần chốt URL) | LUÔN GỬI |
+| ACCOUNT_ENABLED | `[HomeSpace] Tài khoản đã được kích hoạt lại` | Trạng thái: Đang hoạt động; Thời gian | "Đăng nhập" (`/login`, giả định) | LUÔN GỬI |
+| ACCOUNT_ROLE_CHANGED | `[HomeSpace] [Quan trọng] Quyền truy cập tài khoản đã thay đổi` | Thời gian; "Do quản trị viên thay đổi"; nhắc liên hệ hỗ trợ nếu không mong đợi | "Xem tài khoản và bảo mật" | LUÔN GỬI |
+| KYC_VERIFIED | `[HomeSpace] Xác minh danh tính đã hoàn tất` | Trạng thái: Đã xác minh; Thời gian | "Xem tài khoản" | BẬT (tắt được qua pref ACCOUNT) |
+| KYC_REJECTED | `[HomeSpace] [Quan trọng] Xác minh danh tính chưa được chấp nhận` | Trạng thái; Thời gian; hướng dẫn thử lại chung | "Xác minh lại" | BẬT |
 | KYC_RETRY_REQUIRED | `[HomeSpace] [Quan trọng] Cần thực hiện lại xác minh danh tính` | Trạng thái: Chưa hoàn tất; Thời gian | "Tiếp tục xác minh" | BẬT |
 
-Dữ liệu cấm đưa vào email: CCCD/số định danh, họ tên đầy đủ, ngày sinh, ảnh giấy tờ, `rejectionReason`, `sessionUrl`, nhà cung cấp (VNPT/ADMIN), tên admin thực hiện, role cũ/mới, số tài khoản ngân hàng/tên chủ tài khoản, IP, thiết bị. `attemptId` chỉ dùng làm khóa, không hiển thị. Email người nhận không đi vào log/DLT.
+Cấm đưa vào email: CCCD/số định danh, họ tên, ngày sinh, ảnh giấy tờ, `rejectionReason`, `sessionUrl`, provider (VNPT/ADMIN), tên admin, role cũ/mới, số TK ngân hàng/tên chủ TK, IP/thiết bị, `attemptId` (chỉ làm khóa). Địa chỉ email người nhận không vào log/DLT. Schema NS từ chối field lạ (`coverage-completion.spec.ts:24-29`).
 
-## 3. Gap và khả năng thực hiện
-1. **Đổi mật khẩu**: `updateUserPassword` chỉ gọi Keycloak (`UserServiceImpl.java:224-227`), không phát event. Keycloak có `UPDATE_PASSWORD`/`UPDATE_CREDENTIAL` trong `enabledEventTypes` (`hs-infra/keycloak/realm-export.json:1711-1722`) nhưng `eventsEnabled=false` (`:1706`) và provider chỉ chuyển `REGISTER`, `UPDATE_PROFILE`, `UPDATE_EMAIL`, `DELETE_ACCOUNT` (`KafkaEventPublisherProvider.java:12-16`). Khả thi (TB): cách A (nhanh) ở Core sau khi `keycloakUserService.updatePassword` thành công, enqueue `ACCOUNT_PASSWORD_CHANGED` qua writer. Cách B bao phủ cả "quên mật khẩu" (đổi ngoài Core): bật events + forward `UPDATE_PASSWORD`/`RESET_PASSWORD` vào topic mới, Core chuyển thành event ACCOUNT. B đụng hạ tầng + cần thay `UserSyncConsumer` (`:41-62`, action lạ chỉ `log.warn`).
-2. **Đăng nhập thiết bị mới**: không có dữ liệu thiết bị/IP ở bất kỳ nơi nào đã đọc; `UserEventPayloadBuilder` không đưa IP. Khó (cao): cần bật `LOGIN`, lưu danh sách thiết bị đã biết (bảng mới), chống ồn, và PII (IP) trong email. Đề xuất hoãn sang giai đoạn sau; nếu làm thì email chỉ nêu "thiết bị mới" + giờ, không IP chính xác.
-3. **Tài khoản ngân hàng đổi/thêm/xóa/đổi mặc định**: không có event; payment-service chưa có outbox thông báo. Khả thi (TB, ưu tiên cao vì rủi ro lừa đảo nhận tiền): trong `BankAccountService` (`:59,103,122,140`) ghi outbox cùng transaction, event `BANK_ACCOUNT_CHANGED` với `data={action: ADDED|UPDATED|DEFAULT_CHANGED|REMOVED}`, không số tài khoản. Cần copy writer/outbox theo mẫu `AccountNotificationWriter` (payment phụ thuộc user nên dùng lại được, `AGENTS.md` module order) và thêm type vào `notification-event.ts`.
-4. **Đổi email/SĐT/username**: đi qua `updateUserProfile` (`:286-306`) và Keycloak `UPDATE_EMAIL` (`KafkaEventPublisherProvider.java:14`); không có event. Khả thi (TB) nhưng phải gửi tới email CŨ; event không mang email nên Directory phải trả email trước thay đổi, cần chốt thiết kế (rủi ro). Đề xuất pha 2.
-5. **Trùng với Keycloak**: Keycloak đang tự gửi email verify (`verifyEmail=true`, `realm-export.json:35`) và reset mật khẩu (`resetPasswordAllowed`, `:38`) qua Gmail SMTP (`:1685-1703`). KHÔNG làm email NS cho hai luồng này. Email "đã đổi mật khẩu" của NS là bổ sung (xác nhận sau hành động), không thay email reset; để tránh gửi đôi, chỉ phát cho đổi mật khẩu từ Core (cách A) hoặc dùng `RESET_PASSWORD` làm trigger ở cách B, tuyệt đối không phát từ cả hai.
+## 3. Thiếu thông báo (Gap)
+Không trùng email của Keycloak (xem mục dưới cùng); đánh dấu ưu tiên.
+1. **Tài khoản ngân hàng thêm/sửa/xóa/đổi mặc định (CAO, tiền)**: không event. Rủi ro đổi nơi nhận tiền/hoàn cọc. Lưu ý `updateBankAccount` đang `@Transactional(readOnly = true)` nhưng có `save` (`BankAccountService.java:81-82`): có thể không ghi DB (giả định, cần test; ngoài phạm vi báo cáo nhưng phải xử lý trước khi gắn event vào đây). Payment đã có outbox + publisher sẵn (`P/notification/PaymentNotificationOutbox.java`, `PaymentNotificationPublisher.java`) => thêm event `BANK_ACCOUNT_CHANGED` với `data={action: ADDED|UPDATED|DEFAULT_CHANGED|REMOVED}`, không số TK. Email: Có, luôn gửi.
+2. **Đổi mật khẩu (CAO, bảo mật)**: `updateUserPassword` chỉ gọi Keycloak (`UserServiceImpl.java:224-227`; `KeycloakUserServiceImpl.java:193-211`). Cách A (chọn): sau khi Keycloak thành công, enqueue `ACCOUNT_PASSWORD_CHANGED` qua writer. Cách B (forward `UPDATE_PASSWORD` từ Keycloak) cần bật `eventsEnabled` (đang `false`, `hs-infra/keycloak/realm-export.json:1706`) + mở rộng provider (hiện chỉ REGISTER/UPDATE_PROFILE/UPDATE_EMAIL/DELETE_ACCOUNT, `KafkaEventPublisherProvider.java:12-16`) => hoãn. Email: Có, luôn gửi.
+3. **Admin đổi email/SĐT/username của user (CAO, chiếm tài khoản)**: `updateUser` (`UserServiceImpl.java:100-123`) đổi cả email nhưng chỉ phát event khi đổi role. Người dùng tự đổi qua `updateUserProfile` (`:286-306`) cũng không có event. Cần gửi tới email CŨ => Directory phải trả email trước khi đổi; chốt thiết kế (event mang flag, lookup email tại thời điểm ghi). Pha 2.
+4. **Đổi quyền hàng loạt qua Role**: `RoleServiceImpl.updateRole` (`:76-85`) đổi permission cho mọi user thuộc role, không event. TB/thấp, cần quyết định có thông báo từng user hay không (giả định: không).
+5. **Đăng nhập thiết bị mới**: không có dữ liệu thiết bị/IP; cần bật Keycloak `LOGIN` + bảng thiết bị. Hoãn.
+6. **Xóa tài khoản** (`UserSyncConsumer.java:59`, Keycloak DELETE_ACCOUNT): không event; sau xóa không còn địa chỉ gửi. Không làm.
+7. Trùng Keycloak (KHÔNG làm email NS): verify email (`realm-export.json:35`), reset mật khẩu (`:38`), email mời/đặt mật khẩu ban đầu (`KeycloakUserServiceImpl.java:42,251`). Email "đã đổi mật khẩu" của NS chỉ phát từ đường Core (cách A), không phát thêm cho reset để khỏi gửi đôi.
 
-## 4. Thay đổi theo repo
+## 4. Việc cần làm
+**CORE (trước tiên)**
+1. `U/notification/UserEmailLookupService.java:23-30` + `hs-api-service/.../internal/UserInternalController.java:36-41`: thêm tham số `includeInactive` (mặc định false, giữ hành vi broadcast); với true thì bỏ điều kiện `getActive()`, vẫn yêu cầu email không rỗng. Endpoint đã bảo vệ bởi `X-Internal-Secret`.
+2. (Pha 1.5) `ACCOUNT_PASSWORD_CHANGED` trong `UserServiceImpl.updateUserPassword` qua `AccountNotificationWriter` (cần `@Transactional` hiện không có; eventId xác định theo thời điểm/`randomUUID` + outbox).
+3. `BANK_ACCOUNT_CHANGED` trong payment outbox; sửa `readOnly=true` ở `updateBankAccount` nếu test xác nhận lỗi.
+4. Cập nhật docs Kafka. Không đổi writer KYC/role/disable.
+
 **NS**
-- `notification-delivery/email/templates/account/` (index.ts + hbs hoặc dùng `renderEmail` + chi tiết), có `email.spec.ts` kiểm escape, subject, link, không rò PII (dựa trên mẫu `system/index.ts`).
-- `email-outbox.ts`/`email-delivery.service.ts`: tổng quát hóa "đủ điều kiện gửi" thành chính sách theo `(category,type)`: SYSTEM opt-in; ACCOUNT bảo mật (`ACCOUNT_*`, sau này PASSWORD/BANK) `mandatory` bỏ qua pref, KYC theo pref mặc định BẬT; chọn renderer theo type (hiện cứng `renderSystemBroadcastEmail`, `:128`); `content()` cần trả thêm `type`, `category`, `occurredAt`.
-- `NotificationService.create`: gọi `enqueue` cho ACCOUNT (hiện chỉ SYSTEM + `PLATFORM_ANNOUNCEMENT`, theo `docs/EMAIL_RESEND.md:54`).
-- Preferences: mặc định `email=true` cho ACCOUNT KYC (cần migration nhẹ vì reset cũ đặt false, `mongo-notification-preference.repository.ts:41`); UI hiển thị "Cảnh báo bảo mật luôn được gửi". Email người nhận chưa xác minh/không có: bỏ qua với `no-address` (có sẵn).
-- Event mới (nếu làm): `ACCOUNT_PASSWORD_CHANGED`, `BANK_ACCOUNT_CHANGED` trong `notification-event.ts` (+ priority, route `/settings/account-security`, bảng copy, spec).
-**CORE**: `UserServiceImpl` (password), `BankAccountService` + outbox/publisher mới ở payment (cùng transaction), cập nhật docs Kafka. Không đổi writer KYC/role/disable.
-**hs-infra**: chỉ khi chọn cách B (bật events, forward thêm type, topic). Giữ SMTP Gmail của Keycloak.
+1. `user-email.directory.ts:19-31`: `resolve(userIds, {includeInactive})` gửi body `{userIds, includeInactive}`; `email-delivery.service.ts:78` tách batch: job `ACCOUNT_DISABLED` gọi với `includeInactive=true`, còn lại giữ false. `content()` (`email-outbox.ts:158-170`) trả thêm `type`, `category`, `occurredAt` (hiện chỉ sourceEventId/title/body/priority).
+2. Chính sách theo `(category,type)`: SYSTEM opt-in; `ACCOUNT_*` (+ PASSWORD/BANK sau này) `mandatory` bỏ qua `optedIn` (`email-outbox.ts:173-177`, `email-delivery.service.ts:58-62,115`); KYC theo pref mặc định BẬT (cần migration, reset cũ đặt `email=false`, `mongo-notification-preference.repository.ts:41`; UI ghi "Cảnh báo bảo mật luôn được gửi").
+3. Renderer theo type (hiện cứng `renderSystemBroadcastEmail`, `email-delivery.service.ts:128`); thêm `templates/account/index.ts` + hbs; `email.spec.ts` kiểm escape, subject, link, không rò PII.
+4. `notification.service.ts:111`: mở điều kiện enqueue cho `category === 'ACCOUNT'` (và các type mới); thêm `ACCOUNT_PASSWORD_CHANGED`, `BANK_ACCOUNT_CHANGED` vào `notification-event.ts` (+ priority, route `/settings/account-security`, spec).
+5. Hàng đợi: email bảo mật nên ưu tiên trước broadcast (đang một hàng, `EMAIL_SEND_INTERVAL_MS`).
+6. Cập nhật `docs/EMAIL_RESEND.md`, `docs/KAFKA_TESTING.md`; test `npm test -- --runInBand src/modules/notification-delivery src/modules/notification-events`.
 
-## 5. Rủi ro
-- Khóa tài khoản: người dùng bị khóa vẫn nhận email (đúng ý), nhưng bell không xem được; kiểm tra Directory vẫn resolve email của user `active=false` (chưa xác minh trong audit này).
-- Chống trùng Kafka at-least-once với event `randomUUID` (role/disable) chỉ dựa unique `(recipientId, sourceEventId)`; nếu producer outbox retry cùng `eventId` thì ổn (`writer :47,62`).
-- Spam: KYC_RETRY_REQUIRED lặp bởi scheduler, chỉ email lần đầu.
-- PII: `rejectionReason` không bao giờ vào email; spec cần test từ chối field lạ.
-- Resend giới hạn tốc độ (`EMAIL_SEND_INTERVAL_MS`): email bảo mật nên dùng hàng đợi ưu tiên riêng, tránh chờ sau đợt broadcast lớn.
-- "Luôn gửi" cần quyết định pháp lý/nội dung (email giao dịch/bảo mật, không phải marketing).
+**hs-infra**: không cần (chỉ khi chọn cách B).
 
-## 6. Checklist theo thứ tự
-1. Chốt chính sách (security luôn gửi, KYC theo pref BẬT) và nội dung/subject ở mục 2.
-2. NS: policy `(category,type)` + renderer theo type + `content()` mở rộng; test.
-3. NS: template `account/*` + `email.spec.ts`.
-4. NS: gọi enqueue cho ACCOUNT trong `NotificationService.create`; migration pref ACCOUNT email=true.
-5. Verify: Directory trả email của user bị khóa; thử end-to-end `ACCOUNT_DISABLED`, `KYC_VERIFIED`.
-6. CORE: thêm `BANK_ACCOUNT_CHANGED` (payment outbox) + NS event/spec.
-7. CORE: `ACCOUNT_PASSWORD_CHANGED` (cách A), cập nhật docs, tránh trùng email Keycloak.
-8. Pha 2: đổi email/SĐT (email cũ), đăng nhập thiết bị mới (cần bật Keycloak events).
-9. Cập nhật `docs/EMAIL_RESEND.md` và `docs/KAFKA_TESTING.md`; chạy `npm test -- --runInBand src/modules/notification-delivery src/modules/notification-events`.
+## 5. Directory và user bị khóa (đã xác minh)
+Kết quả: **KHÔNG trả email user bị khóa**. Bằng chứng: `UserEmailLookupService.findActive` lọc `Boolean.TRUE.equals(u.getActive())` (`U/notification/UserEmailLookupService.java:26-28`), comment "unknown or disabled ids are simply absent"; NS ghi chú tương tự (`user-email.directory.ts:10`). `updateUserStatus` đặt `active=false` và enqueue outbox trong cùng transaction (`UserServiceImpl.java:338-356`), nên khi NS xử lý email thì user luôn đã inactive => job bị `skipped/no-address` (`email-delivery.service.ts:107-115`) và KHÔNG retry (trạng thái cuối). Hậu quả: email "tài khoản bị khóa" (bắt buộc theo quyết định chủ sở hữu) sẽ không bao giờ gửi nếu không sửa mục Core 1 + NS 1. `ACCOUNT_ENABLED` không bị ảnh hưởng (user đã active lại). KYC_RETRY của scheduler chỉ cho user active (`KycRetryNoticeScheduler.java:33`), không cần.
+
+## 6. Rủi ro
+- PII: `rejectionReason` không bao giờ vào email; giữ spec từ chối field lạ.
+- Cho phép lookup user inactive chỉ qua cờ tường minh và chỉ cho `ACCOUNT_DISABLED`; không mở cho broadcast.
+- "Luôn gửi" cần chốt nội dung pháp lý (email giao dịch/bảo mật, không phải marketing).
+- Admin tự đổi role/status của chính mình bị bỏ qua (`writer:46`), đúng chủ ý.
+
+Chưa kiểm tra: hành vi runtime của `readOnly=true` ở `updateBankAccount`; có luồng self-deactivate nào ngoài admin hay không (không thấy trong U).

@@ -12,19 +12,29 @@ Hạ tầng gửi email, khung mẫu Handlebars và cách thêm mẫu: `docs/EMA
 - Khung mẫu chung `templates/layout/base.hbs` + `components/`, mỗi mục một thư mục mẫu.
 - Mới gửi email cho **Hệ thống** (thông báo admin), opt-in, mặc định TẮT.
 
-## 2. Tổng hợp 6 module
+## 2. Tổng hợp (rà lại 28/11 trên code hiện tại)
 
-| Mục | Số event | Gửi email | Đề xuất mặc định | Điểm chính |
+| Mục (tab app) | Event Core phát | Gửi email | Đính kèm PDF (S3) | Mặc định đề xuất |
 |---|---|---|---|---|
-| Thanh toán & Hóa đơn | ~35 | Phần lớn | **BẬT** | "Thanh toán thành công" = `PAYMENT_RECEIPT_CONFIRMED`; biên nhận PDF do worker nền tạo **sau** khi xác nhận; hoá đơn tháng và gói hội viên **chưa có PDF** |
-| Hợp đồng & Đặt cọc | ~50 | 14 | **BẬT** | Đã ký đủ, tới lượt ký, phụ lục, gia hạn, chấm dứt, quyết toán, kết quả khiếu nại; PDF hợp đồng gửi **link đăng nhập**, không đính kèm |
-| Tài khoản & Bảo mật | 6 có email | 6 | KYC: **BẬT**; khoá/mở khoá/đổi vai trò: **luôn gửi** | Không bao giờ đưa CCCD, dữ liệu KYC, số tài khoản vào email |
-| Yêu cầu thuê | 26 | ~17 (+3 gộp) | TẮT | Thiếu nhắc "sắp hết hạn phản hồi / giữ chỗ"; event chưa mang hạn chót |
-| Lịch hẹn xem nhà | 10 | 7 | TẮT | Nhắc lịch đã có (cửa sổ 24 giờ); `.ics` để giai đoạn 2; địa chỉ chỉ trong email đã xác nhận |
-| Tin đăng cho thuê | — | 6 | TẮT | Duyệt, từ chối, sửa bị từ chối, hết hạn, bị ẩn, vi phạm; thiếu nhắc "tin sắp hết hạn" |
-| Tin tức, Tin nhắn | — | Không | — | Có thể làm email tổng hợp tuần / tin chưa đọc 24 giờ sau |
+| Thanh toán | 34 | 29 | Biên nhận thuê (cả tự xác nhận), biên nhận gói hội viên, biên nhận trả thừa | Chứng từ: LUÔN GỬI · còn lại BẬT |
+| Hợp đồng | 49 | 24 (+2 gộp) | Hợp đồng đã ký đủ (kiểm hash/blockchain; lệch thì gửi link) | BẬT |
+| Tài khoản | 6 | 5 | — | Khoá/mở khoá: LUÔN GỬI · KYC: BẬT |
+| Yêu cầu thuê | 37 (26 thuê + 11 khiếu nại) | 28 (~12 mẫu) | — | TẮT |
+| Lịch hẹn | 10 | 7 | `.ics` (giai đoạn 2) | TẮT |
+| Tin đăng | 10 | 6 | — | TẮT |
+| Hệ thống | 5 | Thông báo admin (đã làm) + sự cố cho admin (gộp theo thành phần) | — | TẮT (thông báo) |
+| Tin tức | 1 | Không | — | — |
 
-Thêm: **bản tổng hợp Chi nhánh 08:00** gửi email cho chủ nhà, mặc định TẮT.
+Không có event nào Core phát mà notification không nhận. Event chết (có mapping, không có producer): `CONTRACT_AWAITING_SIGNATURE/SIGNED/EXPIRED`, `PAYMENT_DISPUTE_*` (7), `PAYMENT_SUCCESSFUL/FAILED/OVERDUE`, `MEMBERSHIP_PAYMENT_REVIEW` (giữ có chủ ý cho Kafka cũ).
+
+### Lỗi phải sửa trước khi bật email
+1. Lấy email chỉ trả user đang hoạt động → email "tài khoản bị khoá" không bao giờ gửi được. Cần cho phép riêng `ACCOUNT_DISABLED`.
+2. `MEMBERSHIP_OVERPAYMENT_RECEIVED` chỉ mang `orderId` → tra nhầm biên nhận mua gói. Thêm `overpaymentId`.
+3. Job xử lý đơn REVIEW cũ lúc khởi động sẽ phát loạt email chuyện cũ → không gửi email cho event phát từ job này.
+4. Sự cố BLOCKCHAIN tạo 1 incident mỗi tài liệu → gộp theo thành phần trước khi gửi email admin.
+5. `RENTAL_HOLD_EXTENDED` dùng cho 2 nghĩa → tách event "sắp hết hạn trả tháng đầu".
+6. `INVOICE_AMOUNT_UPDATED` (phạt tăng mỗi ngày) → không gửi email.
+7. PDF biên nhận tạo sau event → email đợi PDF sẵn (hoặc event "PDF sẵn sàng"); worker PDF dừng im lặng sau 5 lần lỗi.
 
 ## 3. Quyết định cần chủ dự án chốt
 
