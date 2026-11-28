@@ -407,7 +407,7 @@ describe('CoreDocumentClient', () => {
     (globalThis.fetch = jest.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(body), { status })));
 
   it('calls the internal document API with the secret and recipientId and maps files', async () => {
-    const fetchMock = respond(200, { files: [{ fileName: 'a.pdf', contentType: 'application/pdf', contentBase64: 'UERG', sizeBytes: 3 }] });
+    const fetchMock = respond(200, { code: 1000, result: { files: [{ fileName: 'a.pdf', contentType: 'application/pdf', contentBase64: 'UERG', sizeBytes: 3 }] } });
     await expect(client().fetch('rental-receipts', 'rc 1', 'u1')).resolves.toEqual({ outcome: 'ok', files: [{ fileName: 'a.pdf', contentBase64: 'UERG' }] });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('http://10.0.0.5:8081/internal/documents/rental-receipts/rc%201?recipientId=u1');
@@ -427,7 +427,7 @@ describe('CoreDocumentClient', () => {
   });
 
   it('treats an unusable 200 as unavailable and 5xx or network errors as retryable', async () => {
-    respond(200, { files: [] });
+    respond(200, { code: 1000, result: { files: [] } });
     await expect(client().fetch('rental-receipts', 'x', 'u')).resolves.toMatchObject({ outcome: 'unavailable' });
     const forget = jest.fn();
     respond(503);

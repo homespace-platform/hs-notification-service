@@ -89,7 +89,8 @@ export class CoreDocumentClient extends DocumentClient {
     }
     const files = await res
       .json()
-      .then((body: { files?: unknown }) => body.files)
+      // Core wraps every response in ApiResponse: { code, result: { files } }.
+      .then((body: { result?: { files?: unknown } }) => body.result?.files)
       .catch(() => undefined);
     const valid =
       Array.isArray(files) &&
