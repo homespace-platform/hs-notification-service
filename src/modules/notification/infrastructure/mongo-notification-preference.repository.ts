@@ -2,6 +2,7 @@ import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
+  EMAIL_DEFAULT_ON_CATEGORIES,
   NOTIFICATION_CATEGORIES,
   type NotificationCategory,
   type NotificationChannel,
@@ -48,6 +49,37 @@ export class MongoNotificationPreferenceRepository
         },
       ],
     );
+
+    // One-time: before per-category defaults, every non-SYSTEM email=true was the old default, never a user choice.
+    // PAYMENT/CONTRACT become ON, other categories OFF (no template yet); SYSTEM keeps its explicit opt-in.
+    await this.model.collection.updateMany(
+      { emailDefaultsV2: { $ne: true } },
+      [
+        {
+          $set: {
+            emailDefaultsV2: true,
+            items: {
+              $map: {
+                input: '$items',
+                as: 'i',
+                in: {
+                  $cond: [
+                    { $eq: ['$$i.category', 'SYSTEM'] },
+                    '$$i',
+                    {
+                      $mergeObjects: [
+                        '$$i',
+                        { email: { $in: ['$$i.category', [...EMAIL_DEFAULT_ON_CATEGORIES]] } },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+    );
   }
 
   async find(userId: string): Promise<PreferenceItem[] | null> {
@@ -71,7 +103,7 @@ export class MongoNotificationPreferenceRepository
     await this.model
       .updateOne(
         { userId },
-        { $set: { items, updatedAt: now, emailOptInReset: true } },
+        { $set: { items, updatedAt: now, emailOptInReset: true, emailDefaultsV2: true } },
         { upsert: true },
       )
       .exec();
@@ -90,6 +122,7 @@ export class MongoNotificationPreferenceRepository
           userId: { $literal: userId },
           updatedAt: now,
           emailOptInReset: true,
+          emailDefaultsV2: true,
           items: {
             $map: {
               input: NOTIFICATION_CATEGORIES,
@@ -99,7 +132,7 @@ export class MongoNotificationPreferenceRepository
                   {
                     category: '$$category',
                     push: true,
-                    email: { $ne: ['$$category', 'SYSTEM'] },
+                    email: { $in: ['$$category', [...EMAIL_DEFAULT_ON_CATEGORIES]] },
                   },
                   {
                     $arrayElemAt: [

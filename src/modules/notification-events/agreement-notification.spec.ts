@@ -51,7 +51,7 @@ describe('agreement signing notification acceptance', () => {
     for (const type of types) expect(() => parse(withKind(type, 'MOVE_IN'))).toThrow('Invalid notification event');
   });
 
-  it.each(['contractId', 'invoiceId', 'envelopeId', 'revision', 'role', 'amount', 'note', 'reason', 'failureCode', 'pdfUrl', 'actorId',
+  it.each(['invoiceId', 'envelopeId', 'revision', 'role', 'note', 'reason', 'failureCode', 'pdfUrl', 'actorId',
     'recipientSide', 'actionPath', 'deadline', '__proto__'])('rejects extra private or routing data %s in every type', key => {
     const data = JSON.parse(`{"agreementId":"${agreementId}","agreementKind":"LEASE","${key}":"PRIVATE"}`) as unknown;
     for (const type of types) expect(() => parse(event(type, { data }))).toThrow('Invalid notification event');

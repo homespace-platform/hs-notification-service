@@ -20,6 +20,7 @@ import {
 import { DeviceController } from './device.controller';
 import { EmailDeliveryService } from './email-delivery.service';
 import { EMAIL_DELIVERY_MODEL, EmailDeliverySchema, EmailOutbox, MongoEmailOutbox } from './email-outbox';
+import { CoreDocumentClient, DocumentClient } from './core-document.client';
 import { EmailProvider } from './email.provider';
 import { CoreUserEmailDirectory, UserEmailDirectory } from './user-email.directory';
 import { FirebasePushProvider } from './firebase-push.provider';
@@ -49,6 +50,7 @@ import { NotificationDeliveryService } from './notification-delivery.service';
     EmailDeliveryService,
     { provide: EmailOutbox, useClass: MongoEmailOutbox },
     { provide: UserEmailDirectory, useClass: CoreUserEmailDirectory },
+    { provide: DocumentClient, useClass: CoreDocumentClient },
   ],
   exports: [NotificationDeliveryService, EmailProvider, EmailDeliveryService],
 })

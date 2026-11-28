@@ -39,7 +39,7 @@ describe('return, settlement and obligation deadline contract', () => {
       .toBe(routeFor(type, 'A_b-1'));
   });
 
-  it.each(['amount', 'status', 'reason', 'note', 'deadline', 'date', 'side', 'recipientSide', 'actorId',
+  it.each(['status', 'reason', 'note', 'deadline', 'date', 'side', 'recipientSide', 'actorId',
     'proposalVersion', 'revision', 'evidenceId', 'bankAccount', 'signature', 'url', 'actionPath', '__proto__'])(
     'rejects private or routing field %s for every type', key => {
       for (const type of types) {
@@ -55,7 +55,7 @@ describe('return, settlement and obligation deadline contract', () => {
     });
 
   it.each([{}, null, [], { agreementId: resourceId }, { invoiceId: resourceId },
-    { contractId: resourceId, paymentId: resourceId }])('rejects missing, mixed or renamed identity %j', data => {
+    { paymentId: resourceId, invoiceId: resourceId }])('rejects missing, mixed or renamed identity %j', data => {
     for (const type of types) expect(() => parse(event(type, { data }))).toThrow('Invalid notification event');
   });
 

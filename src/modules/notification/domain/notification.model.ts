@@ -19,6 +19,10 @@ export const NOTIFICATION_PRIORITIES = [
 ] as const;
 export type NotificationPriority = (typeof NOTIFICATION_PRIORITIES)[number];
 
+/** Email is ON by default only where an email template exists and the owner decided so; users can turn it off. SYSTEM stays opt-in. */
+export const EMAIL_DEFAULT_ON_CATEGORIES: readonly NotificationCategory[] = ['PAYMENT', 'CONTRACT'];
+export const emailDefault = (category: NotificationCategory): boolean => EMAIL_DEFAULT_ON_CATEGORIES.includes(category);
+
 export const NOTIFICATION_CHANNELS = ['push', 'email'] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 

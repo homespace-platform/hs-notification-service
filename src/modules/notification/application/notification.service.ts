@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { NotificationDeliveryService } from '../../notification-delivery/notification-delivery.service';
+import { emailSpecFor } from '../../notification-delivery/email/email-registry';
 import { EmailDeliveryService } from '../../notification-delivery/email-delivery.service';
 import { NotificationRealtimeService } from '../../notification-realtime/notification-realtime.service';
 import { ErrorCode } from '../../../common/constants/error-code.constant';
@@ -14,6 +15,7 @@ import {
   TITLE_MAX,
 } from '../domain/notification-content';
 import {
+  emailDefault,
   FEED_DEFAULT_LIMIT,
   FEED_MAX_LIMIT,
   NOTIFICATION_CATEGORIES,
@@ -109,9 +111,9 @@ export class NotificationService {
       }
     }
     // Last and isolated: email only queues a durable job, it never delays or fails push/realtime.
-    if (record.category === 'SYSTEM' && record.type === 'PLATFORM_ANNOUNCEMENT') {
+    if (emailSpecFor(record.type)) {
       try {
-        await this.emailDelivery?.enqueue(record.id, record.recipientId);
+        await this.emailDelivery?.enqueue(record);
       } catch {
         this.logger.warn('Email enqueue deferred');
       }
@@ -210,7 +212,7 @@ export class NotificationService {
     );
   }
 
-  /** Categories not configured fall back to enabled, except SYSTEM email (opt-in, see docs/EMAIL_RESEND.md). */
+  /** Categories not configured: push on; email on only for PAYMENT/CONTRACT (see emailDefault). */
   private withDefaults(items: PreferenceItem[] | null): PreferenceItem[] {
     const byCategory = new Map(items?.map((item) => [item.category, item]));
     return NOTIFICATION_CATEGORIES.map((category) => {
@@ -218,7 +220,7 @@ export class NotificationService {
       return {
         category,
         push: item?.push ?? true,
-        email: item?.email ?? category !== 'SYSTEM',
+        email: item?.email ?? emailDefault(category),
       };
     });
   }

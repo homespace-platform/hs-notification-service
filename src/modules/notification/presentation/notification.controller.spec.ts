@@ -341,7 +341,7 @@ describe('NotificationController (HTTP)', () => {
         news.body.result.items.find(
           (item: { category: string }) => item.category === 'NEWS',
         ),
-      ).toEqual({ category: 'NEWS', push: false, email: true });
+      ).toEqual({ category: 'NEWS', push: false, email: false });
 
       await Promise.all([
         http()
@@ -365,7 +365,7 @@ describe('NotificationController (HTTP)', () => {
       const bob = await http().get('/preferences').set(as(BOB)).expect(200);
       expect(
         bob.body.result.items.every(
-          (item: { category: string; push: boolean; email: boolean }) => item.push && item.email === (item.category !== 'SYSTEM'),
+          (item: { category: string; push: boolean; email: boolean }) => item.push && item.email === ['PAYMENT', 'CONTRACT'].includes(item.category),
         ),
       ).toBe(true);
 
@@ -378,7 +378,7 @@ describe('NotificationController (HTTP)', () => {
         put.body.result.items.find(
           (item: { category: string }) => item.category === 'NEWS',
         ),
-      ).toEqual({ category: 'NEWS', push: true, email: true });
+      ).toEqual({ category: 'NEWS', push: true, email: false });
     });
 
     it.each([
@@ -403,7 +403,7 @@ describe('NotificationController (HTTP)', () => {
           .expect(400);
         expect(
           (await service.getPreferences(ALICE)).every(
-            (item) => item.push && item.email === (item.category !== 'SYSTEM'),
+            (item) => item.push && item.email === ['PAYMENT', 'CONTRACT'].includes(item.category),
           ),
         ).toBe(true);
       },

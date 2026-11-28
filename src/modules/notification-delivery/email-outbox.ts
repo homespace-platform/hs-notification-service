@@ -1,44 +1,49 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Schema } from 'mongoose';
-import { NotificationDocument } from '../notification/infrastructure/notification.schema';
+import { emailDefault, type NotificationCategory, type NotificationMetadata } from '../notification/domain/notification.model';
 import { NotificationPreferenceDocument } from '../notification/infrastructure/notification-preference.schema';
 
 export const EMAIL_MAX_ATTEMPTS = 5;
 export const EMAIL_DELIVERY_MODEL = 'NotificationEmailDelivery';
 
-export interface EmailJob {
+/** Everything the email needs, copied at enqueue time so rendering never depends on later notification state. */
+export interface NewEmailJob {
   notificationId: string;
   recipientId: string;
+  category: NotificationCategory;
+  eventType: string;
+  title: string;
+  body: string;
+  priority: string;
+  actionPath: string | null;
+  data: NotificationMetadata;
+  occurredAt: Date;
+}
+export interface EmailJob extends NewEmailJob {
   attempts: number;
+  createdAt: Date;
 }
 export interface EmailJobPatch {
   status: 'pending' | 'sent' | 'skipped' | 'failed';
   nextAttemptAt?: Date;
   providerMessageId?: string;
   errorCode?: string;
-}
-export interface EmailContent {
-  sourceEventId: string;
-  title: string;
-  body: string;
-  priority: string;
+  /** Waiting for an attachment that is not ready yet must not use up a send attempt. */
+  refundAttempt?: boolean;
 }
 
 /** Port so the dispatcher is testable without MongoDB. */
 export abstract class EmailOutbox {
   /** Idempotent per notification. */
-  abstract add(notificationId: string, recipientId: string): Promise<void>;
+  abstract add(job: NewEmailJob): Promise<void>;
   abstract claim(limit: number, now: Date, leaseUntil: Date): Promise<EmailJob[]>;
   abstract finish(job: EmailJob, patch: EmailJobPatch): Promise<void>;
-  abstract content(job: EmailJob): Promise<EmailContent | null>;
-  /** Email for SYSTEM is opt-in: only an explicit true counts. */
-  abstract optedIn(userId: string): Promise<boolean>;
+  /** Category Email toggle; no stored choice falls back to the category default (PAYMENT/CONTRACT on, others off). */
+  abstract optedIn(userId: string, category: NotificationCategory): Promise<boolean>;
 }
 
-export interface EmailDelivery {
-  notificationId: string;
-  recipientId: string;
+export interface EmailDelivery extends NewEmailJob {
   status: 'pending' | 'processing' | 'sent' | 'skipped' | 'failed';
   attempts: number;
   nextAttemptAt: Date;
@@ -50,6 +55,14 @@ export const EmailDeliverySchema = new Schema<EmailDelivery>(
   {
     notificationId: { type: String, required: true, unique: true },
     recipientId: { type: String, required: true },
+    category: String,
+    eventType: String,
+    title: String,
+    body: String,
+    priority: String,
+    actionPath: { type: String, default: null },
+    data: { type: Schema.Types.Mixed, default: {} },
+    occurredAt: Date,
     status: {
       type: String,
       required: true,
@@ -74,23 +87,21 @@ export class MongoEmailOutbox extends EmailOutbox {
   constructor(
     @InjectModel(EMAIL_DELIVERY_MODEL)
     private readonly jobs: Model<EmailDelivery>,
-    @InjectModel(NotificationDocument.name)
-    private readonly notifications: Model<NotificationDocument>,
     @InjectModel(NotificationPreferenceDocument.name)
     private readonly preferences: Model<NotificationPreferenceDocument>,
   ) {
     super();
   }
 
-  async add(notificationId: string, recipientId: string): Promise<void> {
+  async add(job: NewEmailJob): Promise<void> {
+    const { notificationId } = job;
     try {
       await this.jobs
         .updateOne(
           { notificationId },
           {
             $setOnInsert: {
-              notificationId,
-              recipientId,
+              ...job,
               status: 'pending',
               attempts: 0,
               nextAttemptAt: new Date(),
@@ -136,45 +147,37 @@ export class MongoEmailOutbox extends EmailOutbox {
       claimed.push({
         notificationId: job.notificationId,
         recipientId: job.recipientId,
+        category: job.category,
+        eventType: job.eventType,
+        title: job.title,
+        body: job.body,
+        priority: job.priority,
+        actionPath: job.actionPath ?? null,
+        data: job.data ?? {},
+        occurredAt: job.occurredAt,
         attempts: job.attempts,
+        createdAt: (job as unknown as { createdAt: Date }).createdAt,
       });
     }
     return claimed;
   }
 
   async finish(job: EmailJob, patch: EmailJobPatch): Promise<void> {
+    const { refundAttempt, ...set } = patch;
     await this.jobs
       .updateOne(
         { notificationId: job.notificationId, status: 'processing' },
-        { $set: patch, $unset: { leaseUntil: 1 } },
+        {
+          $set: set,
+          $unset: { leaseUntil: 1 },
+          ...(refundAttempt ? { $inc: { attempts: -1 } } : {}),
+        },
       )
       .exec();
   }
 
-  async content(job: EmailJob): Promise<EmailContent | null> {
-    const row = await this.notifications
-      .findOne({
-        _id: job.notificationId,
-        recipientId: job.recipientId,
-        deletedAt: null,
-      })
-      .lean()
-      .exec();
-    return row
-      ? {
-          sourceEventId: row.sourceEventId,
-          title: row.title,
-          body: row.body,
-          priority: row.priority,
-        }
-      : null;
-  }
-
-  async optedIn(userId: string): Promise<boolean> {
+  async optedIn(userId: string, category: NotificationCategory): Promise<boolean> {
     const doc = await this.preferences.findOne({ userId }).lean().exec();
-    return (
-      doc?.items.some((i) => i.category === 'SYSTEM' && i.email === true) ??
-      false
-    );
+    return doc?.items.find((i) => i.category === category)?.email ?? emailDefault(category);
   }
 }

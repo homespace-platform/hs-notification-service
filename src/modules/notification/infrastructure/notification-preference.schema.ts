@@ -30,6 +30,10 @@ export class NotificationPreferenceDocument {
   @Prop({ type: Boolean })
   emailOptInReset?: boolean;
 
+  /** Marks docs migrated to per-category email defaults (PAYMENT/CONTRACT on, others off, SYSTEM untouched). */
+  @Prop({ type: Boolean })
+  emailDefaultsV2?: boolean;
+
   @Prop({ type: Date, required: true })
   updatedAt: Date;
 }

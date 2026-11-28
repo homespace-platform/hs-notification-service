@@ -28,6 +28,8 @@ export interface EmailContext {
   /** Event `data` as stored on the notification (ids, amounts, dates, labels). Never contains secrets. */
   data: Readonly<Record<string, unknown>>;
   occurredAt: Date;
+  /** Notification priority (LOW/NORMAL/HIGH/URGENT); only the system broadcast uses it so far. */
+  priority?: string;
 }
 
 export interface RenderedEmail {

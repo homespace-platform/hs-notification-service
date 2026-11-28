@@ -42,8 +42,8 @@ describe('monthly invoice notification acceptance', () => {
     expect(renderNotification(parsed, 'stored-party').actionPath).toBe('/dashboard/invoices/a_b-1?section=monthly&invoice=Z9');
   });
 
-  it.each(['amount', 'lateFee', 'dueDate', 'meterReading', 'reason', 'note', 'tenantName', 'status', 'paymentId',
-    'recipientSide', 'actionPath', 'orderId', '__proto__'])('rejects extra private or routing data %s in every type', key => {
+  it.each(['lateFee', 'dueDate', 'meterReading', 'reason', 'note', 'tenantName', 'status', 'paymentId',
+    'recipientSide', 'actionPath', '__proto__'])('rejects extra private or routing data %s in every type', key => {
     const data = JSON.parse(`{"contractId":"${contractId}","invoiceId":"${invoiceId}","${key}":"PRIVATE"}`) as unknown;
     for (const type of types) expect(() => parse(event(type, { data }))).toThrow('Invalid notification event');
   });

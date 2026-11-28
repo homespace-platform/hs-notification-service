@@ -2,6 +2,7 @@ import {
   NotificationPreferenceRepository,
   NotificationRepository,
 } from '../domain/notification.repository';
+import { emailDefault } from '../domain/notification.model';
 import type {
   FeedQuery,
   NewNotification,
@@ -132,7 +133,7 @@ export class InMemoryPreferenceRepository extends NotificationPreferenceReposito
     const items = this.store.get(userId) ?? [];
     let item = items.find((entry) => entry.category === category);
     if (!item) {
-      item = { category, push: true, email: category !== 'SYSTEM' };
+      item = { category, push: true, email: emailDefault(category) };
       items.push(item);
     }
     item[channel] = enabled;

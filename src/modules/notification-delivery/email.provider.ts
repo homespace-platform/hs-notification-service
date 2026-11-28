@@ -5,6 +5,12 @@ const RESEND_URL = 'https://api.resend.com/emails';
 const TIMEOUT_MS = 10_000;
 const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
 
+/** `content` is base64; Resend caps a message (after encoding) at 40 MB. */
+export interface EmailAttachment {
+  filename: string;
+  content: string;
+}
+
 export interface SendEmailInput {
   to: string;
   subject: string;
@@ -12,6 +18,7 @@ export interface SendEmailInput {
   text?: string;
   idempotencyKey?: string;
   tags?: { name: string; value: string }[];
+  attachments?: EmailAttachment[];
 }
 
 /** `retryable` is true for 429, 5xx, timeouts and network errors; false for 4xx and invalid input. */
@@ -76,6 +83,7 @@ export class EmailProvider implements OnModuleInit {
           html: input.html,
           text: input.text,
           tags: input.tags,
+          attachments: input.attachments?.length ? input.attachments : undefined,
         }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

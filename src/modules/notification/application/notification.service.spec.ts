@@ -446,18 +446,18 @@ describe('NotificationService', () => {
       expect(items.find((item) => item.category === 'NEWS')).toEqual({
         category: 'NEWS',
         push: false,
-        email: true,
+        email: false,
       });
       expect(
         items
           .filter((item) => item.category !== 'NEWS')
           .every(
-            (item) => item.push && item.email === (item.category !== 'SYSTEM'),
+            (item) => item.push && item.email === ['PAYMENT', 'CONTRACT'].includes(item.category),
           ),
       ).toBe(true);
       expect(
         (await service.getPreferences(BOB)).every(
-          (item) => item.push && item.email === (item.category !== 'SYSTEM'),
+          (item) => item.push && item.email === ['PAYMENT', 'CONTRACT'].includes(item.category),
         ),
       ).toBe(true);
     });
@@ -475,7 +475,7 @@ describe('NotificationService', () => {
 
       expect(
         stale.every(
-          (item) => item.push && item.email === (item.category !== 'SYSTEM'),
+          (item) => item.push && item.email === ['PAYMENT', 'CONTRACT'].includes(item.category),
         ),
       ).toBe(true);
       expect(await service.getPreferences(ALICE)).toEqual(
@@ -516,12 +516,12 @@ describe('NotificationService', () => {
       });
     });
 
-    it('defaults every category to enabled except SYSTEM email (opt-in)', async () => {
+    it('defaults push on everywhere and email on only for PAYMENT and CONTRACT', async () => {
       const { service } = setup();
       const items = await service.getPreferences(ALICE);
       expect(items.length).toBeGreaterThan(0);
       expect(
-        items.every((i) => i.push && i.email === (i.category !== 'SYSTEM')),
+        items.every((i) => i.push && i.email === ['PAYMENT', 'CONTRACT'].includes(i.category)),
       ).toBe(true);
     });
 

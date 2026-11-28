@@ -25,7 +25,7 @@ describe('membership notification acceptance',()=>{
     expect(item.body).not.toMatch(/VND|ETH|SePay|hoàn tiền|chưa được kích hoạt/);
     expect(`${item.title} ${item.body}`).not.toContain('đối soát');
   });
-  it.each(['amount','amountVnd','tier','provider','status','paidAt','paymentId','ownerId','wallet','txHash','reason','url','actionPath','__proto__'])
+  it.each(['amountVnd','tier','provider','status','paidAt','paymentId','ownerId','wallet','txHash','reason','url','actionPath','__proto__'])
     ('rejects extra membership data %s',key=>{
       for(const type of types){const data=JSON.parse(JSON.stringify({orderId}).slice(0,-1)+`,"${key}":"private"}`) as Record<string,string>;
         expect(()=>parse(input(type,{data}))).toThrow('Invalid notification event');}

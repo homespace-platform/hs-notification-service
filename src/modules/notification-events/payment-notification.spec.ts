@@ -28,8 +28,8 @@ describe('payment and refund notification acceptance', () => {
     expect(JSON.stringify(rendered)).not.toMatch(/VND|ETH|SePay|PRIVATE|storageId|recipientSide|LANDLORD|TENANT/);
   });
 
-  it.each(['amount', 'currency', 'bankAccount', 'transferReference', 'reason', 'fileName', 'storageId', 'ownerId',
-    'recipientSide', 'actionPath', 'orderId', '__proto__'])('rejects extra private or routing data %s in every new type', key => {
+  it.each(['currency', 'bankAccount', 'transferReference', 'reason', 'fileName', 'storageId', 'ownerId',
+    'recipientSide', 'actionPath', '__proto__'])('rejects extra private or routing data %s in every new type', key => {
     const data = JSON.parse(`{"paymentId":"${paymentId}","${key}":"PRIVATE"}`) as unknown;
     for (const type of types) expect(() => parse(event(type, { data }))).toThrow('Invalid notification event');
   });

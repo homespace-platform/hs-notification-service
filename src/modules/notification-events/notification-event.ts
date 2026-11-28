@@ -553,6 +553,8 @@ export interface NotificationEvent {
   occurredAt: string;
   recipients: string[];
   data: Record<string, string>;
+  /** Validated extra fields for email only (see EMAIL_DATA_KEYS); copied to the notification metadata. */
+  emailData?: Record<string, string | boolean>;
 }
 
 export class InvalidNotificationEvent extends Error {
@@ -585,6 +587,38 @@ const bookingDate = (value: unknown): value is string =>
   new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
 const bookingTime = (value: unknown): value is string =>
   typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+// Additive email data. Malformed values are dropped, never rejected: the in-app notification must not hit the DLT for an optional email field.
+const EMAIL_DATA_KEYS = ['receiptId', 'orderId', 'overpaymentId', 'contractId', 'agreementType', 'legacy', 'amount', 'period', 'dueAt', 'receiptNumber'] as const;
+const emailDataAllowed = (eventType: string): boolean =>
+  isPaymentType(eventType) || isInvoiceType(eventType) || isAgreementType(eventType) || isAmendmentType(eventType) ||
+  isRenewalType(eventType) || isTerminationType(eventType) || isReturnSettlementType(eventType) || isMembershipExpiryType(eventType) ||
+  (Object.hasOwn(templates, eventType) && ['PAYMENT', 'CONTRACT'].includes(templates[eventType as keyof typeof templates][0]));
+const emailDataValue = (key: (typeof EMAIL_DATA_KEYS)[number], value: unknown): string | boolean | undefined => {
+  switch (key) {
+    case 'legacy':
+      return value === true || value === 'true' ? true : value === false || value === 'false' ? false : undefined;
+    case 'agreementType':
+      return typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,39}$/.test(value) ? value : undefined;
+    case 'amount':
+    case 'period':
+    case 'dueAt':
+    case 'receiptNumber':
+      return plainText(value, 64) ? value : undefined;
+    default:
+      return identifier(value) ? value : undefined;
+  }
+};
+/** `dropped` lists every extra key present (valid or not) so the strict checks never see them. */
+function splitEmailData(data: Record<string, unknown>): { accepted: Record<string, string | boolean>; dropped: string[] } {
+  const accepted: Record<string, string | boolean> = {};
+  const dropped = EMAIL_DATA_KEYS.filter((key) => Object.hasOwn(data, key));
+  for (const key of dropped) {
+    const value = emailDataValue(key, data[key]);
+    if (value !== undefined) accepted[key] = value;
+  }
+  return { accepted, dropped };
+}
 
 export function parseNotificationEvent(
   value: Buffer | null,
@@ -630,7 +664,8 @@ export function parseNotificationEvent(
     ) {
       throw new InvalidNotificationEvent();
     }
-    const event = input as unknown as NotificationEvent;
+    const base = input as unknown as NotificationEvent;
+    const check = (event: NotificationEvent): void => {
     if (isKycType(event.eventType)) {
       if (event.recipients.length !== 1 || Object.keys(event.data).join(',') !== 'attemptId' || !identifier(event.data.attemptId)) throw new InvalidNotificationEvent();
     } else if (isMembershipExpiryType(event.eventType)) {
@@ -764,13 +799,39 @@ export function parseNotificationEvent(
       )
         throw new InvalidNotificationEvent();
     }
-    return event;
+    };
+    // Additive email data (ids, amounts, dates) is split from the strict per-event data, then the unchanged checks run on the rest.
+    // contractId/orderId can also be an event's own required key, so try keeping them before giving up.
+    const extras = emailDataAllowed(base.eventType) ? splitEmailData(base.data) : null;
+    if (!extras?.dropped.length) {
+      check(base);
+      return base;
+    }
+    for (const keep of [[], ['contractId'], ['orderId'], ['contractId', 'orderId']]) {
+      const rest = { ...base.data };
+      for (const key of extras.dropped) if (!keep.includes(key)) delete rest[key];
+      const event: NotificationEvent = { ...base, data: rest, emailData: extras.accepted };
+      try {
+        check(event);
+        return event;
+      } catch {
+        // try the next variant
+      }
+    }
+    throw new InvalidNotificationEvent();
   } catch {
     throw new InvalidNotificationEvent();
   }
 }
 
-export function renderNotification(
+export function renderNotification(event: NotificationEvent, recipientId: string): NewNotification {
+  const notification = renderBase(event, recipientId);
+  return event.emailData && Object.keys(event.emailData).length
+    ? { ...notification, metadata: { ...notification.metadata, ...event.emailData } }
+    : notification;
+}
+
+function renderBase(
   event: NotificationEvent,
   recipientId: string,
 ): NewNotification {

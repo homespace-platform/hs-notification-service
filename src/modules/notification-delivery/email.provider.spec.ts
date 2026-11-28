@@ -33,6 +33,14 @@ describe('EmailProvider', () => {
     });
   });
 
+  it('sends attachments as Resend filename + base64 content, and omits the field when there are none', async () => {
+    fetchMock.mockImplementation(async () => reply(200, { id: 'em_1' }));
+    await new EmailProvider(cfg()).sendEmail({ ...input, attachments: [{ filename: 'a.pdf', content: 'UERG' }] });
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string).attachments).toEqual([{ filename: 'a.pdf', content: 'UERG' }]);
+    await new EmailProvider(cfg()).sendEmail({ ...input, attachments: [] });
+    expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string)).not.toHaveProperty('attachments');
+  });
+
   it('omits Idempotency-Key when not given', async () => {
     await new EmailProvider(cfg()).sendEmail(input);
     expect((fetchMock.mock.calls[0][1] as RequestInit).headers).not.toHaveProperty('Idempotency-Key');
