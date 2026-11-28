@@ -1,0 +1,6 @@
+{{#if badge}}{{> components/badge badge}}{{/if}}
+{{> components/heading}}
+{{#each paragraphs}}{{> components/paragraph}}{{/each}}
+{{#if detailRows.length}}{{> components/details}}{{/if}}
+{{#if cta}}{{> components/button cta}}{{/if}}
+{{#if footerNote}}{{> components/footer-note footerNote}}{{/if}}
