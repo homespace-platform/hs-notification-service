@@ -1,3 +1,4 @@
+import { HealthCheckService, MongooseHealthIndicator } from '@nestjs/terminus';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -40,6 +41,8 @@ describe('NotificationController (HTTP)', () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [NotificationController, HealthController],
       providers: [
+        { provide: HealthCheckService, useValue: {} },
+        { provide: MongooseHealthIndicator, useValue: {} },
         GatewayAuthenticationGuard,
         NotificationService,
         NotificationRealtimeService,
