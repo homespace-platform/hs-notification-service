@@ -81,3 +81,27 @@ Không có event nào Core phát mà notification không nhận. Event chết (c
 - Mẫu biên nhận PDF có chứa thông tin ngân hàng đầy đủ không; kích thước PDF.
 - Đường dẫn nút bấm phía người thuê nằm trong **hs-web-app** (không có hs-client-portal).
 - Người nhận của các cảnh báo "sắp tự xác nhận" khoản chuyển.
+
+## 8. Triển khai đợt 1 (chủ dự án chốt 28/11): Thanh toán + Hợp đồng
+
+Mặc định: Thanh toán = chứng từ **LUÔN GỬI**, còn lại BẬT (tắt được); Hợp đồng = BẬT (tắt được). Các mục khác giữ "Sắp có".
+
+### Đính kèm
+| Email | File |
+|---|---|
+| Thanh toán thành công / tự xác nhận (`PAYMENT_RECEIPT_CONFIRMED`, `PAYMENT_RECEIPT_AUTO_CONFIRMED`) | Biên nhận thuê `RENTAL_RECEIPT` |
+| Kích hoạt gói (`MEMBERSHIP_ACTIVATED`) | `MEMBERSHIP_RECEIPT` |
+| Trả thừa (`MEMBERSHIP_OVERPAYMENT_RECEIVED`) | `OVERPAYMENT_RECEIPT` (event phải mang `overpaymentId`) |
+| HĐ cọc ký xong | **Không đính kèm** |
+| **HĐ thuê ký xong** | `LEASE_BUNDLE`: **PDF HĐ thuê + PDF HĐ cọc** (nếu có cọc) trong **cùng một email** |
+
+### API nội bộ Core (chỉ notification gọi, `/internal/**` + `X-Internal-Secret`, tìm Core qua Eureka)
+`GET /internal/documents/{kind}/{id}?recipientId=<userId>` với `kind` ∈ `rental-receipts`, `membership-receipts` (id = orderId), `overpayment-receipts` (id = overpaymentId), `lease-bundles` (id = lease contractId).
+- 200 `{ files: [{ fileName, contentType: "application/pdf", contentBase64, sizeBytes }] }`
+- 409 `NOT_READY` (PDF chưa tạo xong → notification thử lại), 404 không có, 403 `recipientId` không phải bên liên quan, 422 file lệch hash/blockchain (→ gửi email không đính kèm, kèm link).
+- Core kiểm tra người nhận là chủ biên nhận / một bên hợp đồng; HĐ dùng đúng kiểm tra toàn vẹn của endpoint tải PDF hiện có (biến thể hệ thống, không cần user đăng nhập).
+
+### Notification
+- `email-spec.ts` là hợp đồng chung; mỗi mục `templates/<category>/index.ts` export `Record<eventType, EmailSpec>`; mẫu `.hbs` trong cùng thư mục, dùng `layout/base.hbs`.
+- Dispatcher chung (bỏ gắn cứng SYSTEM): event có spec → xếp email; `ALWAYS` bỏ qua công tắc; `OPT_IN` theo công tắc mục; tổng file > 35 MB hoặc 422 → gửi không đính kèm + link; 409 → thử lại có giới hạn rồi gửi kèm link.
+- Không gửi email cho: event phát từ job xử lý đơn REVIEW cũ, `INVOICE_AMOUNT_UPDATED`.
